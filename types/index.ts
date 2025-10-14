@@ -1,5 +1,5 @@
 // --- GLOBAL TYPES ---
-export type ScreenName = "Timer" | "Notes" | "Flashcards" | "Tasks" | "Debug";
+export type ScreenName = "Timer" | "Notes" | "Flashcards" | "Tasks";
 
 export type SoundPreset = "Chime (Default)" | "Bell Tone" | "Zen Gong" | "Digital Alarm";
 
@@ -27,4 +27,5 @@ export interface PomodoroNote {
   notes: string;
   completedAt: number; // timestamp
   userId: string;
+  imageUrl?: string;
 }

@@ -11,6 +11,7 @@ import {
   Vibration,
   FlatList,
   StyleSheet,
+  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,8 +39,38 @@ import {
 import { db } from "../firebase/firebaseConfig";
 import { saveImage } from "../utils/imageStorage";
 import ImageCaptureModal from "../components/modals/ImageCaptureModal";
-
+//i did it
 // Import types and constants
+
+// Image Viewer Modal Component
+const ImageViewerModal = ({ visible, imageUrl, onClose }: { visible: boolean, imageUrl: string | null, onClose: () => void }) => {
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.imageViewerContainer}>
+        <TouchableOpacity style={styles.imageViewerCloseButton} onPress={onClose}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+        {imageUrl ? (
+          <Image 
+            source={{ uri: imageUrl }} 
+            style={styles.fullScreenImage}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={styles.imageErrorContainer}>
+            <Ionicons name="image-outline" size={80} color="#fff" />
+            <Text style={styles.imageErrorText}>Image not available</Text>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+};
 import { ScreenName, SoundPreset, Task, UserSettings } from "../types";
 import {
   AUTH_MODAL_HEIGHT,
@@ -84,6 +115,7 @@ interface Note {
   userId: string;
   taskId?: string | null;
   duration?: number; // Pomodoro duration in seconds
+  imageUrl?: string; // URL to the image associated with the note
 }
 
 // Normalize Firestore Timestamp/number to millis
@@ -191,10 +223,13 @@ export default function TimerScreen() {
   const [showTaskInputModal, setShowTaskInputModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<{
     taskTitle: string;
     duration: number;
     completedAt: number;
+    imageUrl?: string;
   } | null>(null);
   const [isLogin, setIsLogin] = useState(true);
   const [streak, setStreak] = useState(0);
@@ -346,6 +381,7 @@ export default function TimerScreen() {
             userId: data.userId,
             taskId: data.taskId || null,
             duration: data.duration || 0, // Duration in seconds
+            imageUrl: data.imageUrl || null, // Image URL associated with the note
           });
         });
 
@@ -457,23 +493,8 @@ export default function TimerScreen() {
     const taskTitle = currentTask?.title || "Pomodoro Session";
     const duration = initialTime;
     
-    // Save timer completion data to AsyncStorage as "image"
-    const timerData = JSON.stringify({
-      taskTitle,
-      duration,
-      completedAt,
-      seconds: 0,
-      initialTime,
-      streak
-    });
-    
-    try {
-      // Save the timer data as an "image" in AsyncStorage
-      await saveImage(timerData, taskTitle);
-      console.log("✅ Timer data saved to AsyncStorage");
-    } catch (error) {
-      console.error("❌ Failed to save timer data:", error);
-    }
+    // Do NOT upload anything yet. We will open the image modal and let the
+    // user choose an image, then perform upload from there to avoid Blob issues.
 
     // Mark current task as completed in Firestore
     if (currentTask && user) {
@@ -931,12 +952,30 @@ export default function TimerScreen() {
                         <TouchableOpacity
                           key={note.id}
                           style={styles.noteCard}
-                          onPress={() =>
-                            Alert.alert(
-                              note.title || "Untitled",
-                              `${note.content || ""}\n\n${note.duration ? `Duration: ${formatDuration(note.duration)}` : ""}`
-                            )
-                          }
+                          onPress={() => {
+                            if (note.imageUrl) {
+                              // If there's an image, show it in a modal or navigate to a detail view
+                              Alert.alert(
+                                note.title || "Untitled",
+                                `${note.content || ""}\n\n${note.duration ? `Duration: ${formatDuration(note.duration)}` : ""}`,
+                                [
+                                  { text: "Close", style: "cancel" },
+                                  { 
+                                    text: "View Image", 
+                                    onPress: () => {
+                                      setCurrentImageUrl(note.imageUrl || null);
+                                      setShowImageViewer(true);
+                                    } 
+                                  }
+                                ]
+                              );
+                            } else {
+                              Alert.alert(
+                                note.title || "Untitled",
+                                `${note.content || ""}\n\n${note.duration ? `Duration: ${formatDuration(note.duration)}` : ""}`
+                              );
+                            }
+                          }}
                         >
                           <View style={styles.noteHeader}>
                             <Text style={styles.noteTitle} numberOfLines={1}>
@@ -950,6 +989,12 @@ export default function TimerScreen() {
                             <Text style={styles.noteSnippet} numberOfLines={2}>
                               {note.content}
                             </Text>
+                          ) : null}
+                          {note.imageUrl ? (
+                            <View style={styles.noteImageIndicator}>
+                              <Ionicons name="image-outline" size={14} color="rgba(255,255,255,0.9)" />
+                              <Text style={styles.noteImageText}>Image attached</Text>
+                            </View>
                           ) : null}
                           <View style={styles.noteMetaRow}>
                             <View style={styles.noteMetaLeft}>
@@ -1004,9 +1049,6 @@ export default function TimerScreen() {
             currentTaskId={currentTask?.id || null}
           />
         );
-      case "Debug":
-        const DebugScreen = require('./DebugScreen').default;
-        return <DebugScreen />;
       default:
         return (
           <TimerContent
@@ -1093,14 +1135,6 @@ export default function TimerScreen() {
           active={activeScreen === "Tasks"}
           onPress={setActiveScreen}
         />
-        {__DEV__ && (
-          <NavButton
-            icon="bug-outline"
-            label="Debug"
-            active={activeScreen === "Debug"}
-            onPress={setActiveScreen}
-          />
-        )}
       </View>
 
       {/* Auth Modal */}
@@ -1235,6 +1269,7 @@ export default function TimerScreen() {
         taskTitle={completedSession?.taskTitle || ""}
         duration={completedSession?.duration || 0}
         completedAt={completedSession?.completedAt || Date.now()}
+        imageUrl={completedSession?.imageUrl}
       />
 
       <ImageCaptureModal
@@ -1242,19 +1277,68 @@ export default function TimerScreen() {
         onClose={() => setShowImageModal(false)}
         taskTitle={completedSession?.taskTitle || ""}
         duration={completedSession?.duration || 0}
-        onComplete={() => {
+        onComplete={(imageUrl?: string) => {
           setShowImageModal(false);
           // Show notes modal after image modal is closed
           setTimeout(() => {
+            setCompletedSession((prev) => (prev ? { ...prev, imageUrl } : prev));
             setShowNotesModal(true);
           }, 500);
         }}
+      />
+
+      {/* Image Viewer Modal */}
+      <ImageViewerModal
+        visible={showImageViewer}
+        imageUrl={currentImageUrl}
+        onClose={() => setShowImageViewer(false)}
       />
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  // Image viewer modal styles
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerCloseButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '80%',
+  },
+  imageErrorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageErrorText: {
+    color: '#fff',
+    fontSize: 18,
+    marginTop: 10,
+  },
+  // Note image indicator styles
+  noteImageIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  noteImageText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+    marginLeft: 4,
+  },
   topBar: {
     position: "absolute",
     top: 48,

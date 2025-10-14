@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import {
   collection,
@@ -271,6 +272,27 @@ const NotesContent: React.FC<NotesContentProps> = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                {note.imageUrl ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        note.taskTitle || 'Image',
+                        'Open image in browser?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Open', onPress: () => {
+                              // open URL using Linking
+                              import('react-native').then(({ Linking }) => Linking.openURL(note.imageUrl!));
+                            } },
+                        ]
+                      );
+                    }}
+                    style={{ marginBottom: 10 }}
+                  >
+                    <Image source={{ uri: note.imageUrl }} style={{ width: '100%', height: 180, borderRadius: 10, backgroundColor: '#eee' }} resizeMode="cover" />
+                  </TouchableOpacity>
+                ) : null}
 
                 {note.notes.trim() && (
                   <View style={styles.notesContent}>

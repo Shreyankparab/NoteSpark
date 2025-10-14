@@ -1,37 +1,50 @@
-import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Image } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { saveImage } from '../../utils/imageStorage';
+import React, { useState } from "react";
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Image,
+  Alert,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import { uploadToCloudinaryBase64 } from "../../utils/imageStorage";
+import { auth } from "../../firebase/firebaseConfig";
 
 interface ImageCaptureModalProps {
   visible: boolean;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (imageUrl?: string) => void;
   taskTitle?: string;
   duration?: number;
   completedAt?: number;
 }
 
-const ImageCaptureModal = ({ 
-  visible, 
-  onClose, 
-  onComplete, 
+const ImageCaptureModal = ({
+  visible,
+  onClose,
+  onComplete,
   taskTitle = "Pomodoro Session",
   duration = 0,
-  completedAt = Date.now()
+  completedAt = Date.now(),
 }: ImageCaptureModalProps) => {
   const [isSaving, setIsSaving] = useState(false);
-  const [image, setImage] = useState<string | null>(null);
+  const [image, setImage] = useState<
+    string | { base64: string; mimeType?: string } | null
+  >(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
   const pickImage = async () => {
     setIsCapturing(true);
     try {
       // Request permission
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        alert('Sorry, we need camera roll permissions to make this work!');
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        alert("Sorry, we need camera roll permissions to make this work!");
         return;
       }
 
@@ -41,14 +54,22 @@ const ImageCaptureModal = ({
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled) {
-        setImage(result.assets[0].uri);
+        const asset: any = result.assets[0];
+        const contentType = asset?.mimeType || "image/jpeg";
+        if (asset?.base64) {
+          setImage({ base64: asset.base64, mimeType: contentType });
+        } else if (asset?.uri) {
+          // Fallback to data URL prefix; actual upload requires base64, so this will render preview only
+          setImage(`data:${contentType};base64,`);
+        }
       }
     } catch (error) {
-      console.error('Error picking image:', error);
-      alert('Failed to pick image');
+      console.error("Error picking image:", error);
+      alert("Failed to pick image");
     } finally {
       setIsCapturing(false);
     }
@@ -59,8 +80,8 @@ const ImageCaptureModal = ({
     try {
       // Request permission
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        alert('Sorry, we need camera permissions to make this work!');
+      if (status !== "granted") {
+        alert("Sorry, we need camera permissions to make this work!");
         return;
       }
 
@@ -69,14 +90,21 @@ const ImageCaptureModal = ({
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
+        base64: true,
       });
 
       if (!result.canceled) {
-        setImage(result.assets[0].uri);
+        const asset: any = result.assets[0];
+        const contentType = asset?.mimeType || "image/jpeg";
+        if (asset?.base64) {
+          setImage({ base64: asset.base64, mimeType: contentType });
+        } else if (asset?.uri) {
+          setImage(`data:${contentType};base64,`);
+        }
       }
     } catch (error) {
-      console.error('Error taking photo:', error);
-      alert('Failed to take photo');
+      console.error("Error taking photo:", error);
+      alert("Failed to take photo");
     } finally {
       setIsCapturing(false);
     }
@@ -84,26 +112,56 @@ const ImageCaptureModal = ({
 
   const handleSaveImage = async () => {
     try {
+      // Check if user is logged in
+      if (!auth.currentUser) {
+        Alert.alert(
+          "Login Required",
+          "You need to be logged in to save images. Please log in and try again.",
+          [{ text: "OK", onPress: onClose }]
+        );
+        return;
+      }
+
       setIsSaving(true);
-      
-      // Create a JSON string with timer completion data
-      const timerData = JSON.stringify({
-        taskTitle,
-        duration,
-        completedAt,
-        timestamp: Date.now(),
-        type: 'timer_completion',
-        imageUri: image
-      });
-      
-      // Save the timer data as an "image"
-      await saveImage(timerData, taskTitle);
-      
+
+      // If we have an actual image, upload it to Cloudinary
+      let uploadedUrl: string | undefined;
+      if (image) {
+        let base64: string | null = null;
+        let mimeType: string = "image/jpeg";
+
+        if (typeof image === "string") {
+          // data URL case
+          const match = image.match(/^data:([^;]+);base64,(.*)$/);
+          if (match) {
+            mimeType = match[1] || "image/jpeg";
+            base64 = match[2] || null;
+          }
+        } else if (typeof image === "object" && image.base64) {
+          base64 = image.base64;
+          if (image.mimeType) mimeType = image.mimeType;
+        }
+
+        if (!base64) {
+          throw new Error("No base64 image data available for upload");
+        }
+
+        // Optional: place in folder per user
+        const folder = auth.currentUser?.uid
+          ? `notespark/${auth.currentUser.uid}`
+          : "notespark";
+        const url = await uploadToCloudinaryBase64(base64, mimeType, {
+          folder,
+        });
+        uploadedUrl = url;
+        console.log("✅ Cloudinary upload URL:", url);
+      }
+
       // Call onComplete to proceed to notes modal
-      onComplete();
+      onComplete(uploadedUrl);
     } catch (error) {
-      console.error('Failed to save image:', error);
-      alert('Failed to save session data');
+      console.error("Failed to save image:", error);
+      Alert.alert("Error", "Failed to save session data. Please try again.");
     } finally {
       setIsSaving(false);
       onClose();
@@ -130,18 +188,35 @@ const ImageCaptureModal = ({
               <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.content}>
             {image ? (
-              <Image source={{ uri: image }} style={styles.previewImage} />
+              <Image
+                source={{
+                  uri:
+                    typeof image === "string"
+                      ? image
+                      : `data:${image.mimeType || "image/jpeg"};base64,${
+                          image.base64
+                        }`,
+                }}
+                style={styles.previewImage}
+              />
             ) : (
-              <Ionicons name="image-outline" size={80} color="#fff" style={styles.icon} />
+              <Ionicons
+                name="image-outline"
+                size={80}
+                color="#fff"
+                style={styles.icon}
+              />
             )}
-            
+
             <Text style={styles.description}>
-              {image ? "Image selected! Ready to save?" : "Capture or select an image for your completed session"}
+              {image
+                ? "Image selected! Ready to save?"
+                : "Capture or select an image for your completed session"}
             </Text>
-            
+
             <View style={styles.detailsContainer}>
               <View style={styles.detailRow}>
                 <Ionicons name="time-outline" size={20} color="#fff" />
@@ -149,20 +224,24 @@ const ImageCaptureModal = ({
                   Duration: {Math.floor(duration / 60)} minutes
                 </Text>
               </View>
-              
+
               <View style={styles.detailRow}>
-                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color="#fff"
+                />
                 <Text style={styles.detailText}>
                   Task: {taskTitle || "Pomodoro Session"}
                 </Text>
               </View>
             </View>
           </View>
-          
+
           {!image ? (
             <View style={styles.imageButtonContainer}>
-              <TouchableOpacity 
-                style={[styles.button, styles.imageButton]} 
+              <TouchableOpacity
+                style={[styles.button, styles.imageButton]}
                 onPress={takePhoto}
                 disabled={isCapturing}
               >
@@ -170,14 +249,19 @@ const ImageCaptureModal = ({
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <Ionicons name="camera-outline" size={24} color="#fff" style={styles.buttonIcon} />
+                    <Ionicons
+                      name="camera-outline"
+                      size={24}
+                      color="#fff"
+                      style={styles.buttonIcon}
+                    />
                     <Text style={styles.buttonText}>Take Photo</Text>
                   </>
                 )}
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.button, styles.imageButton]} 
+
+              <TouchableOpacity
+                style={[styles.button, styles.imageButton]}
                 onPress={pickImage}
                 disabled={isCapturing}
               >
@@ -185,7 +269,12 @@ const ImageCaptureModal = ({
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <Ionicons name="images-outline" size={24} color="#fff" style={styles.buttonIcon} />
+                    <Ionicons
+                      name="images-outline"
+                      size={24}
+                      color="#fff"
+                      style={styles.buttonIcon}
+                    />
                     <Text style={styles.buttonText}>Choose Image</Text>
                   </>
                 )}
@@ -193,16 +282,16 @@ const ImageCaptureModal = ({
             </View>
           ) : (
             <View style={styles.buttonContainer}>
-              <TouchableOpacity 
-                style={[styles.button, styles.skipButton]} 
+              <TouchableOpacity
+                style={[styles.button, styles.skipButton]}
                 onPress={() => setImage(null)}
                 disabled={isSaving}
               >
                 <Text style={styles.buttonText}>Change Image</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.button, styles.saveButton]} 
+
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton]}
                 onPress={handleSaveImage}
                 disabled={isSaving}
               >
@@ -214,9 +303,9 @@ const ImageCaptureModal = ({
               </TouchableOpacity>
             </View>
           )}
-          
+
           <View style={styles.skipContainer}>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={handleSkip}
               disabled={isSaving || isCapturing}
             >
@@ -232,16 +321,16 @@ const ImageCaptureModal = ({
 const styles = StyleSheet.create({
   centeredView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   modalView: {
-    width: '90%',
-    backgroundColor: '#546bab',
+    width: "90%",
+    backgroundColor: "#546bab",
     borderRadius: 20,
     padding: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -251,55 +340,55 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   modalTitle: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   closeButton: {
     padding: 5,
   },
   content: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
   },
   icon: {
     marginBottom: 15,
   },
   description: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
   },
   detailsContainer: {
-    width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    width: "100%",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 10,
     padding: 15,
   },
   detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 10,
   },
   detailText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
     marginLeft: 10,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 15,
   },
   imageButtonContainer: {
-    flexDirection: 'column',
+    flexDirection: "column",
     gap: 10,
     marginBottom: 15,
   },
@@ -307,38 +396,38 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     elevation: 2,
-    minWidth: '45%',
-    alignItems: 'center',
+    minWidth: "45%",
+    alignItems: "center",
   },
   imageButton: {
-    backgroundColor: '#3498db',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#3498db",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     paddingVertical: 15,
   },
   skipButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
   },
   saveButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: "#4CAF50",
   },
   buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    textAlign: 'center',
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
   },
   buttonIcon: {
     marginRight: 8,
   },
   skipContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 10,
   },
   skipText: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: "rgba(255, 255, 255, 0.7)",
     fontSize: 14,
-    textDecorationLine: 'underline',
+    textDecorationLine: "underline",
   },
   previewImage: {
     width: 200,

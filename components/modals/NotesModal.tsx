@@ -21,6 +21,7 @@ interface NotesModalProps {
   taskTitle: string;
   duration: number; // in minutes
   completedAt: number;
+  imageUrl?: string;
 }
 
 const NotesModal: React.FC<NotesModalProps> = ({
@@ -29,6 +30,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
   taskTitle,
   duration,
   completedAt,
+  imageUrl,
 }) => {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -51,6 +53,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
         notes: notes.trim(),
         completedAt,
         userId: user.uid,
+        imageUrl: imageUrl || '',
       };
 
       await addDoc(collection(db, 'notes'), noteData);
