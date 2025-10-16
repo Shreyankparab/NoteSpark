@@ -39,11 +39,19 @@ import {
 import { db } from "../firebase/firebaseConfig";
 import { saveImage } from "../utils/imageStorage";
 import ImageCaptureModal from "../components/modals/ImageCaptureModal";
-//i did it
+
 // Import types and constants
 
 // Image Viewer Modal Component
-const ImageViewerModal = ({ visible, imageUrl, onClose }: { visible: boolean, imageUrl: string | null, onClose: () => void }) => {
+const ImageViewerModal = ({
+  visible,
+  imageUrl,
+  onClose,
+}: {
+  visible: boolean;
+  imageUrl: string | null;
+  onClose: () => void;
+}) => {
   return (
     <Modal
       animationType="fade"
@@ -52,12 +60,15 @@ const ImageViewerModal = ({ visible, imageUrl, onClose }: { visible: boolean, im
       onRequestClose={onClose}
     >
       <View style={styles.imageViewerContainer}>
-        <TouchableOpacity style={styles.imageViewerCloseButton} onPress={onClose}>
+        <TouchableOpacity
+          style={styles.imageViewerCloseButton}
+          onPress={onClose}
+        >
           <Ionicons name="close" size={28} color="#fff" />
         </TouchableOpacity>
         {imageUrl ? (
-          <Image 
-            source={{ uri: imageUrl }} 
+          <Image
+            source={{ uri: imageUrl }}
             style={styles.fullScreenImage}
             resizeMode="contain"
           />
@@ -204,7 +215,7 @@ export default function TimerScreen() {
   const [initialTime, setInitialTime] = useState(DEFAULT_MINUTES * 60);
   const [seconds, setSeconds] = useState(initialTime);
   const [isActive, setIsActive] = useState(false);
-  
+
   // Timer state management
 
   // --- Settings State ---
@@ -421,18 +432,18 @@ export default function TimerScreen() {
   const categorizeNotesByDate = (notes: Note[]) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
+
     const thisWeekStart = new Date(today);
     thisWeekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
-    
+
     const lastWeekStart = new Date(thisWeekStart);
     lastWeekStart.setDate(thisWeekStart.getDate() - 7);
-    
+
     const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    
+
     const categories: { [key: string]: Note[] } = {
       Pinned: [],
       Today: [],
@@ -492,7 +503,7 @@ export default function TimerScreen() {
     const completedAt = Date.now();
     const taskTitle = currentTask?.title || "Pomodoro Session";
     const duration = initialTime;
-    
+
     // Do NOT upload anything yet. We will open the image modal and let the
     // user choose an image, then perform upload from there to avoid Blob issues.
 
@@ -540,7 +551,7 @@ export default function TimerScreen() {
       duration,
       completedAt,
     });
-    
+
     // Show image modal first
     setShowImageModal(true);
   };
@@ -932,105 +943,7 @@ export default function TimerScreen() {
         );
       case "Notes":
         return (
-          <View style={styles.notesContainer}>
-            {user ? (
-              notes.length === 0 ? (
-                <View style={styles.notesEmpty}>
-                  <Ionicons name="document-text-outline" size={40} color="rgba(255,255,255,0.9)" />
-                  <Text style={styles.notesEmptyText}>No notes yet</Text>
-                  <Text style={styles.notesEmptySub}>Create a note after a session or via Notes</Text>
-                </View>
-              ) : (
-                <FlatList
-                  data={categorizeNotesByDate(notes)}
-                  keyExtractor={(item) => item[0]}
-                  contentContainerStyle={styles.notesList}
-                  renderItem={({ item: [category, categoryNotes] }) => (
-                    <View style={styles.categorySection}>
-                      <Text style={styles.categoryTitle}>{category}</Text>
-                      {categoryNotes.map((note) => (
-                        <TouchableOpacity
-                          key={note.id}
-                          style={styles.noteCard}
-                          onPress={() => {
-                            if (note.imageUrl) {
-                              // If there's an image, show it in a modal or navigate to a detail view
-                              Alert.alert(
-                                note.title || "Untitled",
-                                `${note.content || ""}\n\n${note.duration ? `Duration: ${formatDuration(note.duration)}` : ""}`,
-                                [
-                                  { text: "Close", style: "cancel" },
-                                  { 
-                                    text: "View Image", 
-                                    onPress: () => {
-                                      setCurrentImageUrl(note.imageUrl || null);
-                                      setShowImageViewer(true);
-                                    } 
-                                  }
-                                ]
-                              );
-                            } else {
-                              Alert.alert(
-                                note.title || "Untitled",
-                                `${note.content || ""}\n\n${note.duration ? `Duration: ${formatDuration(note.duration)}` : ""}`
-                              );
-                            }
-                          }}
-                        >
-                          <View style={styles.noteHeader}>
-                            <Text style={styles.noteTitle} numberOfLines={1}>
-                              {note.title || "Untitled"}
-                            </Text>
-                            {note.pinned ? (
-                              <Ionicons name="pin" size={16} color="rgba(255,255,255,0.9)" />
-                            ) : null}
-                          </View>
-                          {note.content ? (
-                            <Text style={styles.noteSnippet} numberOfLines={2}>
-                              {note.content}
-                            </Text>
-                          ) : null}
-                          {note.imageUrl ? (
-                            <View style={styles.noteImageIndicator}>
-                              <Ionicons name="image-outline" size={14} color="rgba(255,255,255,0.9)" />
-                              <Text style={styles.noteImageText}>Image attached</Text>
-                            </View>
-                          ) : null}
-                          <View style={styles.noteMetaRow}>
-                            <View style={styles.noteMetaLeft}>
-                              <Text style={styles.noteMeta}>
-                                {new Date(note.updatedAt || note.createdAt || Date.now()).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </Text>
-                              {note.duration ? (
-                                <View style={styles.durationChip}>
-                                  <Ionicons name="timer-outline" size={12} color="rgba(255,255,255,0.9)" />
-                                  <Text style={styles.durationText}>{formatDuration(note.duration)}</Text>
-                                </View>
-                              ) : null}
-                            </View>
-                            {note.taskId ? (
-                              <View style={styles.noteChip}>
-                                <Ionicons name="checkbox-outline" size={12} color="rgba(255,255,255,0.9)" />
-                                <Text style={styles.noteChipText}>Linked</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                />
-              )
-            ) : (
-              <View style={styles.notesEmpty}>
-                <Ionicons name="lock-closed-outline" size={40} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.notesEmptyText}>Sign in to view notes</Text>
-              </View>
-            )}
-          </View>
+          <NotesContent />
         );
       case "Flashcards":
         return (
@@ -1069,8 +982,9 @@ export default function TimerScreen() {
   };
 
   return (
-      <LinearGradient colors={["#6A85B6", "#BAC8E0"]} style={{ flex: 1 }}>
-      {/* Top Bar */}
+    <LinearGradient colors={["#6A85B6", "#BAC8E0"]} style={{ flex: 1 }}>
+      {/* Top Bar (hidden on Notes for dedicated header/search) */}
+      {activeScreen !== "Notes" && (
       <View style={styles.topBar}>
         <View style={styles.leftTopContainer}>
           <View style={styles.streakContainer}>
@@ -1105,9 +1019,16 @@ export default function TimerScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
       {/* Content */}
-      <View style={styles.contentArea}>{renderContent()}</View>
+      <View style={[
+        styles.contentArea,
+        activeScreen === "Notes" && styles.contentAreaStretch
+      ]}
+      >
+        {renderContent()}
+      </View>
 
       {/* Bottom Nav */}
       <View style={styles.bottomNav}>
@@ -1281,7 +1202,9 @@ export default function TimerScreen() {
           setShowImageModal(false);
           // Show notes modal after image modal is closed
           setTimeout(() => {
-            setCompletedSession((prev) => (prev ? { ...prev, imageUrl } : prev));
+            setCompletedSession((prev) =>
+              prev ? { ...prev, imageUrl } : prev
+            );
             setShowNotesModal(true);
           }, 500);
         }}
@@ -1301,42 +1224,42 @@ const styles = StyleSheet.create({
   // Image viewer modal styles
   imageViewerContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   imageViewerCloseButton: {
-    position: 'absolute',
+    position: "absolute",
     top: 40,
     right: 20,
     zIndex: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
     borderRadius: 20,
     padding: 8,
   },
   fullScreenImage: {
-    width: '100%',
-    height: '80%',
+    width: "100%",
+    height: "80%",
   },
   imageErrorContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   imageErrorText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
     marginTop: 10,
   },
   // Note image indicator styles
   noteImageIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 4,
     marginBottom: 4,
   },
   noteImageText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.9)',
+    color: "rgba(255,255,255,0.9)",
     marginLeft: 4,
   },
   topBar: {
@@ -1383,6 +1306,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingBottom: 100,
+  },
+  contentAreaStretch: {
+    alignItems: "stretch",
+    justifyContent: "flex-start",
   },
   bottomNav: {
     position: "absolute",

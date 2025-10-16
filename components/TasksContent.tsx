@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingTop: 60,
   },
   tasksTitle: {
     fontSize: 28,

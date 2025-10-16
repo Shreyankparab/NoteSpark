@@ -9,7 +9,7 @@ const AI_PROVIDER_KEY = 'notespark_ai_provider';
 const OPENAI_CREDITS_KEY = 'notespark_openai_credits';
 
 // Default values
-const DEFAULT_PROVIDER: AIProvider = 'openai';
+const DEFAULT_PROVIDER: AIProvider = 'gemini';
 const DEFAULT_OPENAI_CREDITS = 100; // Example credit limit
 
 // API Keys
@@ -145,35 +145,15 @@ class AIService {
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     
+    // Non-templated fallback to avoid repetitive outputs when OpenAI path is used
+    const sentences = options.content.split(/(?<=[.!?])\s+/).filter(Boolean);
     if (options.type === 'summarize') {
-      // Generate a more detailed summary (4-5 lines)
-      const contentPreview = options.content.substring(0, 100);
-      const topic = this.extractTopic(contentPreview);
-      
-      return `[OpenAI Summary] 
-${topic} is a critical concept in the modern digital landscape. 
-This note explores the fundamental principles and practical applications of ${topic}. 
-Key points include the methodologies, ethical considerations, and best practices in the field. 
-The content highlights important relationships between ${topic} and related domains, providing a comprehensive overview for both beginners and experienced practitioners.`;
+      const take = Math.max(1, Math.min(5, Math.ceil(sentences.length / 3)));
+      return sentences.slice(0, take).join(' ');
     } else {
-      // Generate a more detailed enhancement (10-11 lines)
-      const contentPreview = options.content.substring(0, 100);
-      const topic = this.extractTopic(contentPreview);
-      
-      return `${options.content}\n\n[OpenAI Enhanced] 
-${topic} represents a sophisticated domain with multiple dimensions worth exploring further:
-
-1. Historical Context: The evolution of ${topic} has been shaped by significant technological and societal developments over the past decades.
-
-2. Core Principles: The fundamental concepts underlying ${topic} include systematic approaches, methodological rigor, and ethical considerations.
-
-3. Best Practices: Industry standards for ${topic} emphasize documentation, transparency, and continuous improvement.
-
-4. Risk Management: Effective ${topic} requires comprehensive risk assessment and mitigation strategies.
-
-5. Future Trends: Emerging technologies are reshaping how ${topic} is implemented, with AI and automation playing increasingly important roles.
-
-This enhanced analysis provides deeper context to help you better understand and apply these concepts in practical scenarios.`;
+      const excerpt = sentences.slice(0, 3).join(' ');
+      const topic = this.extractTopic(options.content.slice(0, 140));
+      return `${excerpt}\n\nInsight: A key factor in ${topic.toLowerCase()} is clarifying objectives and constraints before execution.`;
     }
   }
   
@@ -210,8 +190,8 @@ This enhanced analysis provides deeper context to help you better understand and
       const url = `${endpoint}?key=${GEMINI_API_KEY}`;
       
       const prompt = options.type === 'summarize' 
-        ? `Create a professional, detailed summary (4-5 paragraphs) of the following text. Include key concepts, main points, and implications: ${options.content}`
-        : `Enhance the following note with substantial additional context, insights, and analysis (10-11 paragraphs). Include historical context, core principles, best practices, practical applications, and future trends: ${options.content}`;
+        ? `You are a precise editor. Summarize faithfully in 3-7 bullet points. Do not invent facts. If the text is too short, noisy, or lacks meaning, respond: "Insufficient content to summarize." Text:\n\n${options.content}`
+        : `You are an expert writing coach. Improve clarity, cohesion, and depth without changing meaning. Expand with 1-2 brief, concrete insights tied to the text. Do not fabricate facts. If the text is too short, respond: "Insufficient content to enhance." Text:\n\n${options.content}`;
       
       const response = await fetch(url, {
         method: 'POST',
@@ -229,8 +209,9 @@ This enhanced analysis provides deeper context to help you better understand and
             }
           ],
           generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1024,
+            temperature: 0.4,
+            topP: 0.9,
+            maxOutputTokens: 768,
           }
         })
       });
@@ -241,47 +222,20 @@ This enhanced analysis provides deeper context to help you better understand and
         throw new Error(`Gemini API error: ${data.error?.message || 'Unknown error'}`);
       }
       
-      const result = data.candidates[0]?.content?.parts[0]?.text || '';
-      
-      // Add prefix to indicate which AI was used
-      const prefix = options.type === 'summarize' ? '[Gemini Summary] ' : '[Gemini Enhanced] ';
-      return options.type === 'summarize' ? `${prefix}${result}` : `${options.content}\n\n${prefix}${result}`;
+      const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim?.() || '';
+      return result || (options.type === 'summarize' ? 'Insufficient content to summarize.' : options.content);
     } catch (error) {
       console.error('Error calling Gemini API:', error);
       
-      // Fallback to simulated response if API fails
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Use the same topic extraction method for consistency
-      const contentPreview = options.content.substring(0, 100);
-      const topic = this.extractTopic(contentPreview);
-      
+      // Fallback: simple extractive summary/enhancement to avoid templated outputs
+      const sentences = options.content.split(/(?<=[.!?])\s+/).filter(Boolean);
       if (options.type === 'summarize') {
-        return `[Gemini Summary] 
-${topic} represents an important area of study with significant implications.
-This note provides a comprehensive overview of ${topic}, exploring its fundamental concepts and practical applications.
-The analysis covers key methodologies, technical considerations, and implementation strategies related to ${topic}.
-Additionally, it examines the relationship between ${topic} and adjacent fields, offering valuable insights for professionals and enthusiasts alike.
-This summary captures the essential elements while preserving the nuanced perspective presented in the original content.`;
+        const take = Math.max(1, Math.min(5, Math.ceil(sentences.length / 3)));
+        return sentences.slice(0, take).map(s => `• ${s}`).join('\n');
       } else {
-        return `${options.content}\n\n[Gemini Enhanced] 
-${topic} can be further explored through these important dimensions:
-
-1. Conceptual Framework: ${topic} is built upon a foundation of established principles that have evolved through rigorous research and practical application.
-
-2. Technical Implementation: Effective ${topic} requires careful consideration of methodological approaches, tool selection, and process optimization.
-
-3. Industry Applications: Across various sectors, ${topic} has demonstrated significant value in addressing complex challenges and improving operational efficiency.
-
-4. Ethical Considerations: The responsible implementation of ${topic} necessitates awareness of potential impacts on stakeholders and broader societal implications.
-
-5. Comparative Analysis: When evaluated against alternative approaches, ${topic} offers distinct advantages in terms of scalability, reliability, and adaptability.
-
-6. Case Studies: Numerous organizations have successfully leveraged ${topic} to achieve measurable improvements in performance and outcomes.
-
-7. Future Directions: Emerging technologies and evolving methodologies continue to expand the potential applications and effectiveness of ${topic}.
-
-This enhanced analysis provides a more comprehensive understanding of the subject matter, enabling more informed decision-making and implementation strategies.`;
+        const excerpt = sentences.slice(0, 3).join(' ');
+        const topic = this.extractTopic(options.content.slice(0, 140));
+        return `${excerpt}\n\nInsight: Consider edge cases and assumptions when working with ${topic.toLowerCase()}.`;
       }
     }
   }

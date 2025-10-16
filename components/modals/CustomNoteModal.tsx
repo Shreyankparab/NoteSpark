@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../firebase/firebaseConfig';
 
 interface CustomNoteModalProps {
   visible: boolean;
   onClose: () => void;
+  initialImageUrl?: string;
 }
 
-const CustomNoteModal: React.FC<CustomNoteModalProps> = ({ visible, onClose }) => {
+const CustomNoteModal: React.FC<CustomNoteModalProps> = ({ visible, onClose, initialImageUrl }) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const [isListening, setIsListening] = useState(false);
   const voiceRef = useRef<any>(null);
 
@@ -33,6 +35,13 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({ visible, onClose }) =
       throw e;
     }
   };
+
+  // Initialize image from props when opened
+  React.useEffect(() => {
+    if (visible) {
+      setImageUrl(initialImageUrl);
+    }
+  }, [visible, initialImageUrl]);
 
   const startListening = async () => {
     try {
@@ -68,9 +77,11 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({ visible, onClose }) =
         completedAt: Date.now(),
         userId: user.uid,
         createdAt: serverTimestamp(),
+        imageUrl: imageUrl || '',
       });
       setTitle('');
       setContent('');
+      setImageUrl(undefined);
       onClose();
       Alert.alert('Saved', 'Note saved successfully.');
     } catch (e) {
@@ -83,6 +94,12 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({ visible, onClose }) =
       <View style={styles.overlay}>
         <View style={styles.container}>
           <Text style={styles.title}>New Note</Text>
+        {imageUrl ? (
+          <View style={{ alignItems: 'center', marginBottom: 12 }}>
+            <Text style={styles.label}>Image</Text>
+            <Image source={{ uri: imageUrl }} style={{ width: 180, height: 140, borderRadius: 12, marginTop: 6 }} />
+          </View>
+        ) : null}
           <TextInput
             style={styles.input}
             placeholder="Title"

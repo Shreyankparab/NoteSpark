@@ -175,104 +175,84 @@ const NotesModal: React.FC<NotesModalProps> = ({
 
   return (
     <Modal
-      visible={visible}
       animationType="slide"
       transparent={true}
+      visible={visible}
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <View style={styles.modalContainer}>
-          <ScrollView style={styles.scrollContainer}>
-            <View style={styles.header}>
-              <Text style={styles.title}>🎉 Pomodoro Complete!</Text>
-              <Text style={styles.subtitle}>Add notes about this session</Text>
-            </View>
-
-            <View style={styles.sessionInfo}>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Task:</Text>
-                <Text style={styles.infoValue}>{taskTitle}</Text>
+          <View style={styles.sessionCompleteHeader}>
+            <Text style={styles.sessionCompleteTitle}>Session Complete!</Text>
+            <Text style={styles.sessionCompleteSubtitle}>Write your notes.</Text>
+          </View>
+          
+          {/* Task info at the top */}
+          <View style={styles.taskInfoContainer}>
+            <Text style={styles.taskInfoText}>Task: {taskTitle}</Text>
+          </View>
+          
+          <View style={styles.notesInputContainer}>
+            <TextInput
+              style={styles.notesInputFullScreen}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Jot down your key takeaways, brilliant ideas, or anything else on your mind..."
+              placeholderTextColor="#999"
+              multiline={true}
+              textAlignVertical="top"
+            />
+          </View>
+          
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.saveNotesButton}
+              onPress={handleSaveNotes}
+              disabled={isLoading}
+            >
+              <Text style={styles.saveNotesButtonText}>
+                {isLoading ? 'Saving...' : 'Save Notes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.aiButtonsContainer}>
+            {notes.trim().length > 0 && (
+              <View style={styles.aiButtonRow}>
+                {processingAI ? (
+                  <View style={styles.aiButton}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                ) : (
+                  <>
+                    {notes.length > 100 ? (
+                      <TouchableOpacity
+                        style={styles.aiButton}
+                        onPress={handleAISummarize}
+                      >
+                        <Text style={styles.aiButtonText}>AI Summarize</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.aiButton}
+                        onPress={handleAIEnhance}
+                      >
+                        <Text style={styles.aiButtonText}>AI Enhance</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Duration:</Text>
-                <Text style={styles.infoValue}>{formatDuration(duration)}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Completed:</Text>
-                <Text style={styles.infoValue}>{formatDate(completedAt)}</Text>
-              </View>
-            </View>
-
-            <View style={styles.notesSection}>
-              <Text style={styles.notesLabel}>Session Notes (Optional)</Text>
-              <View style={styles.micRow}>
-                <TouchableOpacity
-                  style={[styles.micButton, isListening && styles.micActive]}
-                  onPress={isListening ? stopListening : startListening}
-                >
-                  <Text style={styles.micText}>{isListening ? 'Stop' : 'Mic'}</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput
-                style={styles.notesInput}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="What did you accomplish? Any insights or thoughts about this Pomodoro session?"
-                placeholderTextColor="#999"
-                multiline={true}
-                numberOfLines={6}
-                textAlignVertical="top"
-              />
-              
-              {notes.trim().length > 0 && (
-                <View style={styles.aiActions}>
-                  {processingAI ? (
-                    <View style={styles.aiButton}>
-                      <ActivityIndicator size="small" color="#fff" />
-                    </View>
-                  ) : (
-                    <>
-                      {notes.length > 100 ? (
-                        <TouchableOpacity
-                          style={styles.aiButton}
-                          onPress={handleAISummarize}
-                        >
-                          <Text style={styles.aiButtonText}>AI Summarize</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.aiButton}
-                          onPress={handleAIEnhance}
-                        >
-                          <Text style={styles.aiButtonText}>AI Enhance</Text>
-                        </TouchableOpacity>
-                      )}
-                    </>
-                  )}
-                </View>
-              )}
-            </View>
-
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity
-                style={[styles.button, styles.skipButton]}
-                onPress={handleSkip}
-                disabled={isLoading}
-              >
-                <Text style={styles.skipButtonText}>Skip</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.button, styles.saveButton]}
-                onPress={handleSaveNotes}
-                disabled={isLoading}
-              >
-                <Text style={styles.saveButtonText}>
-                  {isLoading ? 'Saving...' : 'Save Notes'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+            )}
+            
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={handleSkip}
+              disabled={isLoading}
+            >
+              <Text style={styles.skipButtonText}>Skip</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -291,61 +271,50 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     width: '90%',
     maxWidth: 500,
+    height: '90%',
     maxHeight: '80%',
     elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
     shadowRadius: 20,
+    overflow: 'hidden',
   },
-  scrollContainer: {
-    padding: 24,
-  },
-  header: {
+  sessionCompleteHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  title: {
+  sessionCompleteTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
+    textAlign: 'center',
   },
-  subtitle: {
+  sessionCompleteSubtitle: {
     fontSize: 16,
     color: '#666',
+    textAlign: 'center',
   },
-  sessionInfo: {
+  taskInfoContainer: {
+    padding: 15,
     backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
+    borderRadius: 10,
+    margin: 15,
   },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  infoLabel: {
+  taskInfoText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#555',
-  },
-  infoValue: {
-    fontSize: 16,
     color: '#333',
-    fontWeight: '500',
   },
-  notesSection: {
-    marginBottom: 24,
+  notesInputContainer: {
+    padding: 15,
+    flex: 1,
+    position: 'relative',
   },
-  notesLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-  },
-  notesInput: {
+  notesInputFullScreen: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 12,
@@ -353,47 +322,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     backgroundColor: '#fff',
-    minHeight: 120,
+    minHeight: 150,
+    height: '100%',
+    textAlignVertical: 'top',
   },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
+  buttonRow: {
+    padding: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
-  button: {
-    flex: 1,
-    paddingVertical: 16,
+  saveNotesButton: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  saveNotesButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  aiButtonsContainer: {
+    padding: 15,
+    paddingTop: 0,
+  },
+  aiButtonRow: {
+    marginBottom: 15,
   },
   skipButton: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#ddd',
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: 'center',
   },
   skipButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#666',
   },
-  saveButton: {
-    backgroundColor: '#6C63FF',
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
-  micRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 },
-  micButton: { backgroundColor: '#f1f5ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 9999 },
-  micActive: { backgroundColor: '#e0ecff' },
-  micText: { color: '#4F46E5', fontWeight: '700' },
-  aiActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 15,
-  },
   aiButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#9c27b0',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 20,
@@ -405,6 +375,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  micButton: {
+    position: 'absolute',
+    right: 30,
+    bottom: 30,
+    backgroundColor: '#2196F3',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  micIcon: {
+    color: 'white',
   },
 });
 
