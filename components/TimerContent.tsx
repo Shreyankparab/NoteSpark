@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Circle } from "react-native-svg";
 import { Task } from "../types";
 import { TIMER_SIZE, BORDER_WIDTH, PROGRESS_BORDER_WIDTH } from "../constants";
+import { Theme } from "../constants/themes";
 
 interface TimerContentProps {
   formatTime: (sec: number) => string;
@@ -16,6 +18,7 @@ interface TimerContentProps {
   currentTask: Task | null;
   onEditTask: () => void;
   onAddOneMinute: () => void;
+  theme: Theme;
 }
 
 const TimerContent: React.FC<TimerContentProps> = ({
@@ -29,57 +32,97 @@ const TimerContent: React.FC<TimerContentProps> = ({
   currentTask,
   onEditTask,
   onAddOneMinute,
+  theme,
 }) => {
   const [showAddMinute, setShowAddMinute] = useState(false);
   // Show automatically in the final 30 seconds of the countdown
   const shouldAlwaysShowAdd = isActive && seconds <= 30;
-  const rotationAngle = (progressPercentage / 100) * 360;
-  const isOverHalf = progressPercentage > 50;
 
-  const rightHalfRotation = isOverHalf ? 180 : rotationAngle;
-  const leftHalfRotation = rotationAngle - 180;
+  // SVG Circle Progress Calculation
+  const radius = (TIMER_SIZE - PROGRESS_BORDER_WIDTH * 2) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (progressPercentage / 100) * circumference;
+
+  // Helper function to determine if a color is light
+  const isLightColor = (color: string): boolean => {
+    // Simple check for white or light colors
+    const lightColors = ['#FFFFFF', '#FFF', 'white', 'rgba(255, 255, 255'];
+    return lightColors.some(light => color.toUpperCase().includes(light.toUpperCase()));
+  };
+
+  // Determine button text color based on button background
+  const startButtonTextColor = isLightColor(theme.timerCircleColor) 
+    ? theme.accentColor // Use accent color for text on light backgrounds
+    : theme.textColor; // Use theme text color for dark backgrounds
 
   return (
     <View style={styles.centerContent}>
       {currentTask && (
-        <View style={styles.currentTaskContainer}>
+        <View style={[
+          styles.currentTaskContainer,
+          { backgroundColor: theme.buttonColor }
+        ]}>
           <View style={styles.currentTaskHeader}>
-            <Text style={styles.currentTaskLabel}>Current Task:</Text>
+            <Text style={[
+              styles.currentTaskLabel,
+              { color: theme.secondaryTextColor }
+            ]}>Current Task:</Text>
             <TouchableOpacity onPress={onEditTask}>
-              <Ionicons name="create-outline" size={18} color="white" />
+              <Ionicons name="create-outline" size={18} color={theme.textColor} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.currentTaskTitle}>{currentTask.title}</Text>
+          <Text style={[
+            styles.currentTaskTitle,
+            { color: theme.textColor }
+          ]}>{currentTask.title}</Text>
         </View>
       )}
 
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => {
-          if (isActive) setShowAddMinute((prev) => !prev);
-        }}
-        style={styles.timerCircleBase}
-      >
-        <View style={styles.timerProgressContainer}>
-          <View
-            style={[
-              styles.timerCircleRight,
-              { transform: [{ rotate: `${rightHalfRotation}deg` }] },
-            ]}
+      <View style={styles.timerContainer}>
+        {/* SVG Progress Ring */}
+        <Svg
+          width={TIMER_SIZE}
+          height={TIMER_SIZE}
+          style={styles.progressSvg}
+        >
+          {/* Background Circle */}
+          <Circle
+            cx={TIMER_SIZE / 2}
+            cy={TIMER_SIZE / 2}
+            r={radius}
+            stroke={theme.timerCircleColor}
+            strokeWidth={PROGRESS_BORDER_WIDTH}
+            fill="none"
+            opacity={0.3}
           />
+          {/* Progress Circle */}
+          <Circle
+            cx={TIMER_SIZE / 2}
+            cy={TIMER_SIZE / 2}
+            r={radius}
+            stroke={theme.accentColor}
+            strokeWidth={PROGRESS_BORDER_WIDTH}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation="-90"
+            origin={`${TIMER_SIZE / 2}, ${TIMER_SIZE / 2}`}
+          />
+        </Svg>
 
-          {isOverHalf && (
-            <View
-              style={[
-                styles.timerCircleLeft,
-                { transform: [{ rotate: `${leftHalfRotation}deg` }] },
-              ]}
-            />
-          )}
-        </View>
-
-        <View style={styles.timerCircleContent}>
-          <Text style={styles.timerText}>{formatTime(seconds)}</Text>
+        {/* Inner circle - stays fixed */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            if (isActive) setShowAddMinute((prev) => !prev);
+          }}
+          style={[
+            styles.timerCircleContent,
+            { backgroundColor: theme.buttonColor }
+          ]}
+        >
+          <Text style={[styles.timerText, { color: theme.textColor }]}>{formatTime(seconds)}</Text>
           {(shouldAlwaysShowAdd || (isActive && showAddMinute)) && (
             <TouchableOpacity
               style={styles.addMinuteButton}
@@ -92,25 +135,37 @@ const TimerContent: React.FC<TimerContentProps> = ({
               <Text style={styles.addMinuteText}>+1 min</Text>
             </TouchableOpacity>
           )}
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
 
       <View style={{ flexDirection: "row", marginTop: 40 }}>
         <TouchableOpacity
-          style={styles.startButton}
+          style={[
+            styles.startButton,
+            { backgroundColor: theme.timerCircleColor }
+          ]}
           onPress={handleStartPause}
           disabled={isLoading}
         >
-          <Text style={styles.startButtonText}>
+          <Text style={[
+            styles.startButtonText,
+            { color: startButtonTextColor }
+          ]}>
             {isActive ? "Pause" : "Start"}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.resetButton}
+          style={[
+            styles.resetButton,
+            { backgroundColor: theme.accentColor }
+          ]}
           onPress={handleReset}
           disabled={isLoading}
         >
-          <Text style={styles.resetButtonText}>Reset</Text>
+          <Text style={[
+            styles.resetButtonText,
+            { color: theme.timerCircleColor }
+          ]}>Reset</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -128,6 +183,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     width: "90%",
   },
+  timerContainer: {
+    width: TIMER_SIZE,
+    height: TIMER_SIZE,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  progressSvg: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+  },
   currentTaskHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -144,23 +211,12 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "700",
   },
-  timerCircleBase: {
-    width: TIMER_SIZE,
-    height: TIMER_SIZE,
-    borderRadius: TIMER_SIZE / 2,
-    borderWidth: BORDER_WIDTH,
-    borderColor: "rgba(255, 255, 255, 0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    overflow: "hidden",
-  },
   timerCircleContent: {
     position: "absolute",
-    zIndex: 2,
-    width: TIMER_SIZE - PROGRESS_BORDER_WIDTH,
-    height: TIMER_SIZE - PROGRESS_BORDER_WIDTH,
-    borderRadius: (TIMER_SIZE - PROGRESS_BORDER_WIDTH) / 2,
+    zIndex: 10,
+    width: TIMER_SIZE - PROGRESS_BORDER_WIDTH * 4,
+    height: TIMER_SIZE - PROGRESS_BORDER_WIDTH * 4,
+    borderRadius: (TIMER_SIZE - PROGRESS_BORDER_WIDTH * 4) / 2,
     backgroundColor: "#6A85B6",
     justifyContent: "center",
     alignItems: "center",
@@ -180,42 +236,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     color: "#4F46E5",
     fontWeight: "700",
-  },
-  timerProgressContainer: {
-    width: TIMER_SIZE,
-    height: TIMER_SIZE,
-    position: "absolute",
-    top: 0,
-    left: 0,
-    borderRadius: TIMER_SIZE / 2,
-  },
-  timerCircleRight: {
-    position: "absolute",
-    top: 0,
-    left: HALF_SIZE,
-    width: HALF_SIZE,
-    height: TIMER_SIZE,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    borderWidth: PROGRESS_BORDER_WIDTH,
-    borderColor: "#9333ea",
-    borderTopRightRadius: HALF_SIZE,
-    borderBottomRightRadius: HALF_SIZE,
-    zIndex: 1,
-  },
-  timerCircleLeft: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: HALF_SIZE,
-    height: TIMER_SIZE,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-    borderWidth: PROGRESS_BORDER_WIDTH,
-    borderColor: "#9333ea",
-    borderTopLeftRadius: HALF_SIZE,
-    borderBottomLeftRadius: HALF_SIZE,
-    zIndex: 1,
   },
   startButton: {
     backgroundColor: "white",

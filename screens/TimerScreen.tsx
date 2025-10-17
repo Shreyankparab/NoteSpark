@@ -40,6 +40,8 @@ import { db } from "../firebase/firebaseConfig";
 import { saveImage } from "../utils/imageStorage";
 import ImageCaptureModal from "../components/modals/ImageCaptureModal";
 import TimeTableModal from "../components/modals/TimeTableModal";
+import AppearanceScreen from "./AppearanceScreen";
+import { getThemeById, DEFAULT_THEME, Theme } from "../constants/themes";
 
 // Import types and constants
 
@@ -274,6 +276,8 @@ export default function TimerScreen() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showTaskInputModal, setShowTaskInputModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showAppearanceModal, setShowAppearanceModal] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [showTimeTableModal, setShowTimeTableModal] = useState(false);
@@ -352,6 +356,18 @@ export default function TimerScreen() {
       setIsSoundOn(settings.isSoundOn ?? true);
       setIsVibrationOn(settings.isVibrationOn ?? true);
       setSelectedSound(settings.selectedSound || SOUND_PRESETS[0]);
+      
+      // Load saved theme
+      try {
+        const savedThemeId = await AsyncStorage.getItem('selectedTheme');
+        if (savedThemeId) {
+          const theme = getThemeById(savedThemeId);
+          setCurrentTheme(theme);
+          console.log(`✅ Loaded theme: ${theme.name}`);
+        }
+      } catch (error) {
+        console.error('❌ Failed to load theme:', error);
+      }
     };
 
     initializeSettings();
@@ -1082,6 +1098,7 @@ export default function TimerScreen() {
             currentTask={currentTask}
             onEditTask={handleEditCurrentTask}
             onAddOneMinute={handleAddOneMinute}
+            theme={currentTheme}
           />
         );
       case "Notes":
@@ -1122,13 +1139,19 @@ export default function TimerScreen() {
             currentTask={currentTask}
             onEditTask={handleEditCurrentTask}
             onAddOneMinute={handleAddOneMinute}
+            theme={currentTheme}
           />
         );
     }
   };
 
   return (
-    <LinearGradient colors={["#6A85B6", "#BAC8E0"]} style={{ flex: 1 }}>
+    <LinearGradient 
+      colors={currentTheme.colors as any}
+      start={currentTheme.gradientStart || { x: 0, y: 0 }}
+      end={currentTheme.gradientEnd || { x: 1, y: 1 }}
+      style={{ flex: 1 }}
+    >
       {/* Top Bar (hidden on Notes for dedicated header/search) */}
       {activeScreen !== "Notes" && (
         <View style={styles.topBar}>
@@ -1152,6 +1175,16 @@ export default function TimerScreen() {
           </View>
 
           <View style={styles.topRightButtons}>
+            <TouchableOpacity
+              onPress={() => setShowAppearanceModal(true)}
+              style={{ marginRight: 16 }}
+            >
+              <Ionicons
+                name="color-palette"
+                size={28}
+                color="white"
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowTimeTableModal(true)}
               style={{ marginRight: 16 }}
@@ -1402,6 +1435,24 @@ export default function TimerScreen() {
         imageUrl={currentImageUrl}
         onClose={() => setShowImageViewer(false)}
       />
+
+      {/* Appearance Modal */}
+      {showAppearanceModal && (
+        <Modal
+          visible={showAppearanceModal}
+          animationType="slide"
+          onRequestClose={() => setShowAppearanceModal(false)}
+        >
+          <AppearanceScreen
+            onClose={() => setShowAppearanceModal(false)}
+            currentThemeId={currentTheme.id}
+            onThemeChange={(themeId) => {
+              const newTheme = getThemeById(themeId);
+              setCurrentTheme(newTheme);
+            }}
+          />
+        </Modal>
+      )}
     </LinearGradient>
   );
 }
