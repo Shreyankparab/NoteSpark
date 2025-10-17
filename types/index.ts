@@ -33,7 +33,8 @@ export interface PomodoroNote {
 // --- ACHIEVEMENT TYPES ---
 export enum AchievementType {
   STREAK = "streak",
-  FOCUS_TIME = "focus_time"
+  FOCUS_TIME = "focus_time",
+  TASKS_COMPLETED = "tasks_completed"
 }
 
 export interface Achievement {

@@ -1,0 +1,107 @@
+===============================================================================
+PREMIUM ACHIEVEMENT BADGE IMAGE PROMPTS FOR NOTESPARK
+===============================================================================
+
+CONSISTENT SPECIFICATIONS FOR ALL BADGES:
+- Dimensions: 1024x1024 pixels (Square format)
+- Style: Premium 3D rendered badge design with glass morphism effects
+- Color Palette: Purple/Indigo gradient (#6366F1 to #8B5CF6) with metallic accents
+- Lighting: Soft ambient lighting with subtle rim lighting
+- Background: Clean gradient background (light to dark purple/blue)
+- Quality: Ultra-high resolution, professional game asset quality
+
+===============================================================================
+
+ACHIEVEMENT 1: 3-DAY STREAK
+Filename: three-days-streak.jpg
+-------------------------------------------------------------------------------
+PROMPT:
+A premium 3D rendered achievement badge for a productivity app, featuring a stylized flame icon in vibrant orange and yellow gradients with a large number 3 integrated into the flame design. The badge has a circular metallic frame with purple-to-indigo gradient (#6366F1 to #8B5CF6) and gold accents. Glass morphism effect with subtle transparency and frosted glass texture. Soft ambient lighting with rim light creating depth. Clean gradient background transitioning from light lavender to deep purple. Ultra-detailed, 8K quality, professional game asset style, modern UI design, floating particles around the badge suggesting energy and momentum. The number 3 should be prominent and elegant, rendered in gold with a slight glow effect.
+
+===============================================================================
+
+ACHIEVEMENT 2: 7-DAY STREAK
+Filename: seven-days-streak.jpg
+-------------------------------------------------------------------------------
+PROMPT:
+A premium 3D rendered achievement badge for a productivity app, featuring a powerful lightning bolt icon in electric blue and white with a large number 7 integrated into the design. The badge has a circular metallic frame with purple-to-indigo gradient (#6366F1 to #8B5CF6) and platinum/silver accents. Glass morphism effect with subtle transparency and frosted glass texture. Dramatic lighting with electric glow effects. Clean gradient background transitioning from light lavender to deep purple. Ultra-detailed, 8K quality, professional game asset style, modern UI design, crackling energy particles and sparks surrounding the badge. The number 7 should be prominent and bold, rendered in platinum with electric blue glow effect, symbolizing a week of consistency.
+
+===============================================================================
+
+ACHIEVEMENT 3: 30-DAY STREAK
+Filename: thirty-days-streak.jpg
+-------------------------------------------------------------------------------
+PROMPT:
+A premium 3D rendered achievement badge for a productivity app, featuring a majestic diamond or crown icon in brilliant white and rainbow prismatic colors with a large number 30 integrated into the design. The badge has a circular metallic frame with purple-to-indigo gradient (#6366F1 to #8B5CF6) and diamond-encrusted gold accents. Glass morphism effect with subtle transparency and frosted glass texture. Luxurious lighting with rainbow light refraction and sparkle effects. Clean gradient background transitioning from light lavender to deep purple. Ultra-detailed, 8K quality, professional game asset style, modern UI design, glowing particles and light rays emanating from the badge suggesting mastery and achievement. The number 30 should be prominent and regal, rendered in gold with diamond sparkle effects, representing a full month of dedication.
+
+===============================================================================
+
+ACHIEVEMENT 4: 1 HOUR FOCUS
+Filename: one-hour-focus.jpg
+-------------------------------------------------------------------------------
+PROMPT:
+A premium 3D rendered achievement badge for a productivity app, featuring a stylized hourglass or clock icon in soft blue and white gradients with 1H or a clock showing one hour integrated into the design. The badge has a circular metallic frame with purple-to-indigo gradient (#6366F1 to #8B5CF6) and bronze/copper accents. Glass morphism effect with subtle transparency and frosted glass texture. Soft ambient lighting with gentle glow. Clean gradient background transitioning from light lavender to deep purple. Ultra-detailed, 8K quality, professional game asset style, modern UI design, floating time-related particles (clock hands, sand particles) around the badge. The 1H or hour indicator should be prominent and clear, rendered in bronze with a warm glow effect, symbolizing the first milestone of focused work.
+
+===============================================================================
+
+ACHIEVEMENT 5: 5 HOUR FOCUS
+Filename: five-hour-focus.jpg
+-------------------------------------------------------------------------------
+PROMPT:
+A premium 3D rendered achievement badge for a productivity app, featuring a powerful brain or focus target icon in vibrant cyan and teal gradients with 5H integrated into the design. The badge has a circular metallic frame with purple-to-indigo gradient (#6366F1 to #8B5CF6) and silver accents. Glass morphism effect with subtle transparency and frosted glass texture. Dynamic lighting with cyan glow effects and neural network patterns. Clean gradient background transitioning from light lavender to deep purple. Ultra-detailed, 8K quality, professional game asset style, modern UI design, flowing energy waves and concentration rings surrounding the badge. The 5H should be prominent and powerful, rendered in silver with cyan glow effect, representing significant dedication to focused work.
+
+===============================================================================
+
+ACHIEVEMENT 6: 1000 MINUTE FOCUS (MASTER LEVEL)
+Filename: thousand-minutes-focus.jpg
+-------------------------------------------------------------------------------
+PROMPT:
+A premium 3D rendered achievement badge for a productivity app, featuring an epic trophy or laurel wreath icon in brilliant gold and white with 1000 or MASTER text integrated into the design. The badge has a circular metallic frame with purple-to-indigo gradient (#6366F1 to #8B5CF6) and ornate gold filigree accents. Glass morphism effect with subtle transparency and frosted glass texture. Dramatic cinematic lighting with golden rays and particle effects. Clean gradient background transitioning from light lavender to deep purple. Ultra-detailed, 8K quality, professional game asset style, modern UI design, majestic light beams and golden particles radiating from the badge suggesting ultimate mastery. The 1000 or MASTER text should be prominent and legendary, rendered in pure gold with intense glow and sparkle effects, representing the pinnacle of focus achievement.
+
+===============================================================================
+
+QUICK PROMPTS (For Faster Generation):
+===============================================================================
+
+1. 3-Day Streak:
+Premium 3D achievement badge, orange flame with number 3, circular frame with purple-indigo gradient, gold accents, glass morphism, gradient background, 8K quality, 1024x1024px, energy particles
+
+2. 7-Day Streak:
+Premium 3D achievement badge, electric lightning bolt with number 7, circular frame with purple-indigo gradient, platinum accents, glass morphism, gradient background, 8K quality, 1024x1024px, electric sparks
+
+3. 30-Day Streak:
+Premium 3D achievement badge, diamond crown with number 30, circular frame with purple-indigo gradient, gold accents, glass morphism, gradient background, 8K quality, 1024x1024px, rainbow sparkles
+
+4. 1 Hour Focus:
+Premium 3D achievement badge, hourglass with 1H text, circular frame with purple-indigo gradient, bronze accents, glass morphism, gradient background, 8K quality, 1024x1024px, time particles
+
+5. 5 Hour Focus:
+Premium 3D achievement badge, brain or target with 5H text, circular frame with purple-indigo gradient, silver accents, glass morphism, gradient background, 8K quality, 1024x1024px, cyan energy waves
+
+6. 1000 Minute Focus:
+Premium 3D achievement badge, gold trophy with 1000 text, circular frame with purple-indigo gradient, ornate gold accents, glass morphism, gradient background, 8K quality, 1024x1024px, golden rays
+
+===============================================================================
+
+RECOMMENDED AI TOOLS:
+===============================================================================
+- Midjourney (Best for premium quality) - Use --ar 1:1 --quality 2
+- DALL-E 3 (Great for consistent style)
+- Stable Diffusion XL (Good for customization)
+- Leonardo.ai (Excellent for game assets)
+
+GENERATION TIPS:
+- Use aspect ratio 1:1 for square format
+- Request highest quality settings
+- Use seed numbers to maintain consistency across badges
+- Upscale to 1024x1024 after generation if needed
+- Generate multiple variations and pick the best
+
+COLOR REFERENCE:
+- Primary Purple: #6366F1 (Indigo-500)
+- Secondary Purple: #8B5CF6 (Violet-500)
+- Gold: #F59E0B (Amber-500)
+- Platinum: #E5E7EB (Gray-200)
+- Bronze: #D97706 (Amber-600)
+- Silver: #94A3B8 (Slate-400)
+- Cyan: #06B6D4 (Cyan-500)

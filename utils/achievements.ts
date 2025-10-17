@@ -36,7 +36,7 @@ export const ACHIEVEMENTS = [
     type: AchievementType.STREAK,
     name: "30-Day Streak",
     description: "Completed focus sessions for 30 consecutive days",
-    imageFile: require("../assets/adaptive-icon.png"),
+    imageFile: require("../assets/thirty-days-streak.jpg"),
     threshold: 30,
   },
 
@@ -46,7 +46,7 @@ export const ACHIEVEMENTS = [
     type: AchievementType.FOCUS_TIME,
     name: "1 Hour Focus",
     description: "Accumulated 60 minutes of focus time",
-    imageFile: require("../assets/one-hour-focus.jpg"),
+    imageFile: require("../assets/one-hr-focus-time.jpg"),
     threshold: 60,
   },
   {
@@ -62,8 +62,34 @@ export const ACHIEVEMENTS = [
     type: AchievementType.FOCUS_TIME,
     name: "1000 Minute Focus",
     description: "Accumulated 1000 minutes of focus time",
-    imageFile: require("../assets/adaptive-icon.png"), // Using adaptive-icon.png as placeholder since focus_1000.png doesn't exist
+    imageFile: require("../assets/one-thousand-minutes.jpg"),
     threshold: 1000,
+  },
+
+  // Task completion achievements
+  {
+    id: "tasks_10",
+    type: AchievementType.TASKS_COMPLETED,
+    name: "Task Starter",
+    description: "Completed 10 tasks",
+    imageFile: require("../assets/ten-tasks-completed.jpg"),
+    threshold: 10,
+  },
+  {
+    id: "tasks_25",
+    type: AchievementType.TASKS_COMPLETED,
+    name: "Task Champion",
+    description: "Completed 25 tasks",
+    imageFile: require("../assets/twenty-five-tasks-completed.jpg"),
+    threshold: 25,
+  },
+  {
+    id: "tasks_50",
+    type: AchievementType.TASKS_COMPLETED,
+    name: "Task Master",
+    description: "Completed 50 tasks",
+    imageFile: require("../assets/fifty-tasks-completed.jpg"),
+    threshold: 50,
   },
 ];
 
@@ -165,6 +191,58 @@ export const checkFocusTimeAchievements = async (
   } catch (error) {
     console.error(
       `❌ Failed to check focus time achievements for user ${userId}:`,
+      error
+    );
+    return [];
+  }
+};
+
+/**
+ * Check if user has unlocked any task completion achievements
+ * @param userId User ID
+ * @param totalTasksCompleted Total number of completed tasks
+ * @returns Array of newly unlocked achievements
+ */
+export const checkTasksCompletedAchievements = async (
+  userId: string,
+  totalTasksCompleted: number
+): Promise<Achievement[]> => {
+  try {
+    const unlockedAchievements: Achievement[] = [];
+
+    // Get task completion achievements that match the current total
+    const eligibleAchievements = ACHIEVEMENTS.filter(
+      (achievement) =>
+        achievement.type === AchievementType.TASKS_COMPLETED &&
+        achievement.threshold <= totalTasksCompleted
+    );
+
+    console.log(
+      `🎯 Checking task completion achievements for user ${userId} with ${totalTasksCompleted} tasks`
+    );
+    console.log(
+      `🎯 Eligible achievements:`,
+      eligibleAchievements.map((a) => `${a.name} (threshold: ${a.threshold})`)
+    );
+
+    // Check each eligible achievement
+    for (const achievement of eligibleAchievements) {
+      const unlockedAchievement = await unlockAchievement(
+        userId,
+        achievement.id
+      );
+      if (unlockedAchievement) {
+        console.log(
+          `🏆 Newly unlocked achievement: ${unlockedAchievement.name}`
+        );
+        unlockedAchievements.push(unlockedAchievement);
+      }
+    }
+
+    return unlockedAchievements;
+  } catch (error) {
+    console.error(
+      `❌ Failed to check task completion achievements for user ${userId}:`,
       error
     );
     return [];

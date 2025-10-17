@@ -43,13 +43,19 @@ const AchievementBadge: React.FC<AchievementBadgeProps> = ({
         case "streak_7":
           return require("../assets/seven-days-streak.jpg");
         case "streak_30":
-          return require("../assets/adaptive-icon.png");
+          return require("../assets/thirty-days-streak.jpg");
         case "focus_60":
-          return require("../assets/one-hour-focus.jpg");
+          return require("../assets/one-hr-focus-time.jpg");
         case "focus_300":
           return require("../assets/five-hour-focus.jpg");
         case "focus_1000":
-          return require("../assets/adaptive-icon.png");
+          return require("../assets/one-thousand-minutes.jpg");
+        case "tasks_10":
+          return require("../assets/ten-tasks-completed.jpg");
+        case "tasks_25":
+          return require("../assets/twenty-five-tasks-completed.jpg");
+        case "tasks_50":
+          return require("../assets/fifty-tasks-completed.jpg");
         default:
           console.log(`Using default image for achievement: ${achievement.id}`);
           return placeholderImage;

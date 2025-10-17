@@ -10,6 +10,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { getUserAchievements } from "../../utils/achievements";
 import AchievementBadge from "../AchievementBadge";
 import { Achievement } from "../../types";
+import StreaksScreen from "../../screens/StreaksScreen";
+import AchievementsScreen from "../../screens/AchievementsScreen";
 
 interface ProfileModalProps {
   visible: boolean;
@@ -18,6 +20,7 @@ interface ProfileModalProps {
   onLogout: () => Promise<void>;
   streak: number;
   totalFocusMinutes?: number;
+  totalTasksCompleted?: number;
   achievements?: Achievement[];
 }
 
@@ -28,6 +31,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   onLogout,
   streak,
   totalFocusMinutes = 0,
+  totalTasksCompleted = 0,
 }) => {
   const [uploading, setUploading] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(user?.photoURL || null);
@@ -35,6 +39,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const [savingName, setSavingName] = useState(false);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loadingAchievements, setLoadingAchievements] = useState(false);
+  const [showStreaksScreen, setShowStreaksScreen] = useState(false);
+  const [showAchievementsScreen, setShowAchievementsScreen] = useState(false);
 
   // Hydrate profile data from Firestore and keep it in sync
   useEffect(() => {
@@ -167,30 +173,51 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
           <Text style={styles.sectionHeading}>Stats</Text>
           <View style={styles.statsRow}>
-            <StatCard
-              colors={["#7C3AED", "#3B82F6"] as const}
-              icon={<Ionicons name="flame" size={22} color="#fff" />}
-              title="Current Streak"
-              value={`${streak}`}
-              unit="days"
-            />
-            <StatCard
-              colors={["#06B6D4", "#34D399"] as const}
-              icon={<Ionicons name="time" size={22} color="#fff" />}
-              title="Total Focus Time"
-              value={`${totalFocusHours}`}
-              unit="hours"
-              footerText={formatTotalTime(totalFocusMinutes)}
-            />
+            <TouchableOpacity 
+              style={{ flex: 1 }} 
+              onPress={() => setShowStreaksScreen(true)}
+              activeOpacity={0.8}
+            >
+              <StatCard
+                colors={["#7C3AED", "#3B82F6"] as const}
+                icon={<Ionicons name="flame" size={22} color="#fff" />}
+                title="Current Streak"
+                value={`${streak}`}
+                unit="days"
+              />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <StatCard
+                colors={["#06B6D4", "#34D399"] as const}
+                icon={<Ionicons name="time" size={22} color="#fff" />}
+                title="Total Focus Time"
+                value={`${totalFocusHours}`}
+                unit="hours"
+                footerText={formatTotalTime(totalFocusMinutes)}
+              />
+            </View>
           </View>
 
-          <Text style={styles.sectionHeading}>Achievements</Text>
-          <View style={styles.achievementsContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeading}>Achievements</Text>
+            <TouchableOpacity 
+              onPress={() => setShowAchievementsScreen(true)}
+              style={styles.viewAllButton}
+            >
+              <Text style={styles.viewAllText}>View All</Text>
+              <Ionicons name="chevron-forward" size={16} color="#6366F1" />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity 
+            style={styles.achievementsContainer}
+            onPress={() => setShowAchievementsScreen(true)}
+            activeOpacity={0.8}
+          >
             {loadingAchievements ? (
               <ActivityIndicator size="large" color="#7C3AED" style={styles.loadingIndicator} />
             ) : achievements.length > 0 ? (
               <View style={styles.achievementsGrid}>
-                {achievements.map((achievement) => (
+                {achievements.slice(0, 6).map((achievement) => (
                   <AchievementBadge 
                     key={achievement.id} 
                     achievement={achievement} 
@@ -203,7 +230,14 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 No achievements unlocked yet. Keep using NoteSpark to earn badges!
               </Text>
             )}
-          </View>
+            {achievements.length > 6 && (
+              <View style={styles.moreAchievementsBadge}>
+                <Text style={styles.moreAchievementsText}>
+                  +{achievements.length - 6} more
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
           {/* Keep legacy rows minimal; core stats now highlighted above */}
 
@@ -218,6 +252,39 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Streaks Screen Modal */}
+      {showStreaksScreen && user && (
+        <Modal
+          visible={showStreaksScreen}
+          animationType="slide"
+          onRequestClose={() => setShowStreaksScreen(false)}
+        >
+          <StreaksScreen
+            userId={user.uid}
+            currentStreak={streak}
+            onClose={() => setShowStreaksScreen(false)}
+          />
+        </Modal>
+      )}
+
+      {/* Achievements Screen Modal */}
+      {showAchievementsScreen && user && (
+        <Modal
+          visible={showAchievementsScreen}
+          animationType="slide"
+          onRequestClose={() => setShowAchievementsScreen(false)}
+        >
+          <AchievementsScreen
+            userId={user.uid}
+            userAchievements={achievements}
+            currentStreak={streak}
+            totalFocusMinutes={totalFocusMinutes}
+            totalTasksCompleted={totalTasksCompleted}
+            onClose={() => setShowAchievementsScreen(false)}
+          />
+        </Modal>
+      )}
     </Modal>
   );
 };
@@ -243,6 +310,9 @@ const styles = StyleSheet.create({
   editFab: { position: "absolute", right: -4, bottom: -4, backgroundColor: "#4F46E5", width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", elevation: 3 },
   uploadOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { fontSize: 16, fontWeight: "800", color: "#0f172a", marginTop: 8, marginBottom: 10 },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8, marginBottom: 10 },
+  viewAllButton: { flexDirection: "row", alignItems: "center", gap: 4 },
+  viewAllText: { fontSize: 14, fontWeight: "700", color: "#6366F1" },
   statsRow: { flexDirection: "row", gap: 12, marginBottom: 8 },
   statCard: { flex: 1, borderRadius: 16, overflow: "hidden" },
   statInner: { padding: 14, height: 120, justifyContent: "space-between" },
@@ -265,6 +335,8 @@ const styles = StyleSheet.create({
   achievementsContainer: { marginTop: 8, marginBottom: 16 },
   achievementsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, justifyContent: "flex-start" },
   noAchievementsText: { color: "#64748b", fontStyle: "italic", textAlign: "center", paddingVertical: 16 },
+  moreAchievementsBadge: { marginTop: 12, alignItems: "center", backgroundColor: "#EEF2FF", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, alignSelf: "center" },
+  moreAchievementsText: { color: "#6366F1", fontWeight: "700", fontSize: 12 },
   loadingIndicator: { marginVertical: 16 },
   logoutButton: {
     backgroundColor: "#D9534F",

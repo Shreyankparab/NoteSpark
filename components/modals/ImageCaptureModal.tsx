@@ -215,10 +215,12 @@ const ImageCaptureModal = ({
                 : "Capture or select an image for your completed session"}
             </Text>
 
-          <View style={styles.detailsContainer}>
+            <View style={styles.detailsContainer}>
               <View style={styles.detailRow}>
                 <Ionicons name="time-outline" size={20} color="#fff" />
-                <Text style={styles.detailText}>Duration: {duration} minutes</Text>
+                <Text style={styles.detailText}>
+                  Duration: {duration} minutes
+                </Text>
               </View>
 
               <View style={styles.detailRow}>
@@ -276,10 +278,12 @@ const ImageCaptureModal = ({
                 )}
               </TouchableOpacity>
               {/* Optional crop button after selection to avoid forced cropping */}
-              {image && typeof image === 'object' && (image as any).base64 ? (
+              {image && typeof image === "object" && (image as any).base64 ? (
                 <TouchableOpacity
                   style={[styles.button, styles.imageButton]}
-                  onPress={() => { /* Hook in a future cropper here */ }}
+                  onPress={() => {
+                    /* Hook in a future cropper here */
+                  }}
                   disabled={true}
                 >
                   <Text style={styles.buttonText}>Crop (coming soon)</Text>

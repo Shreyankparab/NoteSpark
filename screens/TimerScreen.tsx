@@ -39,6 +39,7 @@ import {
 import { db } from "../firebase/firebaseConfig";
 import { saveImage } from "../utils/imageStorage";
 import ImageCaptureModal from "../components/modals/ImageCaptureModal";
+import TimeTableModal from "../components/modals/TimeTableModal";
 
 // Import types and constants
 
@@ -160,6 +161,19 @@ const createInitialUserDocument = async (userId: string) => {
   }
 };
 
+// Helper function to check task achievements on load (silently, without notifications)
+const checkTaskAchievementsOnLoad = async (userId: string, completedTasksCount: number) => {
+  try {
+    const { checkTasksCompletedAchievements } = require("../utils/achievements");
+    
+    // Silently check and unlock achievements without showing notifications
+    await checkTasksCompletedAchievements(userId, completedTasksCount);
+    console.log(`✅ Checked task achievements on load: ${completedTasksCount} tasks completed`);
+  } catch (error) {
+    console.error("❌ Failed to check task achievements on load:", error);
+  }
+};
+
 // FIRESTORE: Update streak logic
 const updateStreak = async (userId: string): Promise<number> => {
   try {
@@ -168,10 +182,16 @@ const updateStreak = async (userId: string): Promise<number> => {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const newActiveTimestamp = serverTimestamp();
 
     if (!userSnap.exists()) {
-      await setDoc(userRef, { streak: 1, lastActive: newActiveTimestamp });
+      await setDoc(userRef, { 
+        streak: 1, 
+        lastActive: newActiveTimestamp,
+        activeDays: [todayStr],
+        streakStartDate: todayStr
+      });
       return 1;
     }
 
@@ -180,9 +200,22 @@ const updateStreak = async (userId: string): Promise<number> => {
       ? data.lastActive.toDate()
       : null;
     let streak = data?.streak || 0;
+    let activeDays = (data?.activeDays || []) as string[];
+    let streakStartDate = data?.streakStartDate || todayStr;
+
+    // Check if today is already recorded
+    if (activeDays.includes(todayStr)) {
+      // User already visited today, no changes needed
+      return streak;
+    }
 
     if (!lastActive) {
-      await updateDoc(userRef, { streak: 1, lastActive: newActiveTimestamp });
+      await updateDoc(userRef, { 
+        streak: 1, 
+        lastActive: newActiveTimestamp,
+        activeDays: [todayStr],
+        streakStartDate: todayStr
+      });
       return 1;
     }
 
@@ -191,17 +224,25 @@ const updateStreak = async (userId: string): Promise<number> => {
     const lastActiveDay = new Date(lastActive.getTime());
     lastActiveDay.setHours(0, 0, 0, 0);
 
-    if (lastActiveDay.getTime() === today.getTime()) {
-      // Case A: User already logged in TODAY.
-    } else if (lastActiveDay.getTime() === yesterday.getTime()) {
-      // Case B: User logged in YESTERDAY. Streak continues!
+    if (lastActiveDay.getTime() === yesterday.getTime()) {
+      // Case A: User visited YESTERDAY. Streak continues!
       streak += 1;
-    } else {
-      // Case C: User skipped at least one full day. Streak reset.
+      activeDays = [...activeDays, todayStr];
+    } else if (lastActiveDay.getTime() < yesterday.getTime()) {
+      // Case B: User skipped at least one full day. Streak reset.
       streak = 1;
+      // Start new streak, keep only today
+      activeDays = [todayStr];
+      streakStartDate = todayStr;
     }
+    // If lastActiveDay is today, this shouldn't happen due to the check above
 
-    await updateDoc(userRef, { streak, lastActive: newActiveTimestamp });
+    await updateDoc(userRef, { 
+      streak, 
+      lastActive: newActiveTimestamp,
+      activeDays,
+      streakStartDate
+    });
     return streak;
   } catch (error) {
     console.error("Streak error:", error);
@@ -235,6 +276,7 @@ export default function TimerScreen() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
+  const [showTimeTableModal, setShowTimeTableModal] = useState(false);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<{
     taskTitle: string;
@@ -352,6 +394,12 @@ export default function TimerScreen() {
         console.log("✅ Tasks loaded from Firestore:", fetchedTasks.length);
         console.log("📋 Tasks data:", fetchedTasks);
         setTasks(fetchedTasks);
+
+        // Check for task completion achievements when tasks are loaded
+        const completedTasksCount = fetchedTasks.filter(t => t.status === "completed").length;
+        if (completedTasksCount > 0) {
+          checkTaskAchievementsOnLoad(user.uid, completedTasksCount);
+        }
 
         // Find active task
         const activeTask = fetchedTasks.find((t) => t.status === "active");
@@ -532,6 +580,27 @@ export default function TimerScreen() {
           prev ? { ...prev, status: "completed", completedAt } : null
         );
 
+        // Calculate total completed tasks for achievement checking
+        const totalCompletedTasks = tasks.filter(t => t.status === "completed").length + 1; // +1 for the current task
+
+        // Check for task completion achievements
+        try {
+          const { checkTasksCompletedAchievements } = require("../utils/achievements");
+          const { showMultipleAchievementNotifications } = require("../utils/achievementNotification");
+
+          const newTaskAchievements = await checkTasksCompletedAchievements(
+            user.uid,
+            totalCompletedTasks
+          );
+
+          if (newTaskAchievements.length > 0) {
+            console.log(`🏆 Showing ${newTaskAchievements.length} new task achievements`);
+            await showMultipleAchievementNotifications(newTaskAchievements);
+          }
+        } catch (error) {
+          console.error("❌ Failed to check task achievements:", error);
+        }
+
         // Clear current task after a brief delay to show completion status
         setTimeout(() => {
           setCurrentTask(null);
@@ -678,6 +747,7 @@ export default function TimerScreen() {
           const {
             checkStreakAchievements,
             checkFocusTimeAchievements,
+            checkTasksCompletedAchievements,
             getUserAchievements,
           } = require("../utils/achievements");
           const {
@@ -691,8 +761,14 @@ export default function TimerScreen() {
             totalFocusMinutes || 0
           );
 
+          // Check for task completion achievements (will be checked again when tasks load)
+          const completedTasksCount = tasks.filter(t => t.status === "completed").length;
+          const newTaskAchievements = completedTasksCount > 0 
+            ? await checkTasksCompletedAchievements(currentUser.uid, completedTasksCount)
+            : [];
+
           // Combine all new achievements
-          const allNewAchievements = [...newStreakAchievements, ...newFocusAchievements];
+          const allNewAchievements = [...newStreakAchievements, ...newFocusAchievements, ...newTaskAchievements];
 
           if (allNewAchievements.length > 0) {
             console.log(`🏆 Showing ${allNewAchievements.length} new achievements`);
@@ -704,7 +780,7 @@ export default function TimerScreen() {
       } else setShowAuthModal(true);
     });
     return () => unsubscribe();
-  }, [totalFocusMinutes]);
+  }, [totalFocusMinutes, tasks]);
 
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -1077,6 +1153,16 @@ export default function TimerScreen() {
 
           <View style={styles.topRightButtons}>
             <TouchableOpacity
+              onPress={() => setShowTimeTableModal(true)}
+              style={{ marginRight: 16 }}
+            >
+              <Ionicons
+                name="calendar"
+                size={28}
+                color="white"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => setShowProfileModal(true)}
               style={{ marginRight: 16 }}
             >
@@ -1262,6 +1348,13 @@ export default function TimerScreen() {
               : sum,
           0
         )}
+        totalTasksCompleted={tasks.filter(t => t.status === "completed").length}
+      />
+      
+      <TimeTableModal
+        visible={showTimeTableModal}
+        onClose={() => setShowTimeTableModal(false)}
+        userId={user?.uid || null}
       />
 
       <TaskInputModal
