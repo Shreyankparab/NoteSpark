@@ -1,5 +1,5 @@
 // --- GLOBAL TYPES ---
-export type ScreenName = "Timer" | "Notes" | "Flashcards" | "Tasks";
+export type ScreenName = "Timer" | "Notes" | "Flashcards" | "Tasks" | "Profile";
 
 export type SoundPreset = "Chime (Default)" | "Bell Tone" | "Zen Gong" | "Digital Alarm";
 
@@ -28,4 +28,26 @@ export interface PomodoroNote {
   completedAt: number; // timestamp
   userId: string;
   imageUrl?: string;
+}
+
+// --- ACHIEVEMENT TYPES ---
+export enum AchievementType {
+  STREAK = "streak",
+  FOCUS_TIME = "focus_time"
+}
+
+export interface Achievement {
+  id: string;
+  type: AchievementType;
+  name: string;
+  description: string;
+  imageFile: string; // filename of the badge image in assets folder
+  unlockedAt?: any; // timestamp when achieved (can be number or Firebase FieldValue)
+  userId: string;
+}
+
+export interface UserAchievement {
+  achievementId: string;
+  unlockedAt: number; // timestamp
+  userId: string;
 }

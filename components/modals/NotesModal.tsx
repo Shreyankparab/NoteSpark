@@ -10,6 +10,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/firebaseConfig';
 import { PomodoroNote } from '../../types';
@@ -176,12 +177,11 @@ const NotesModal: React.FC<NotesModalProps> = ({
   return (
     <Modal
       animationType="slide"
-      transparent={true}
+      transparent={false}
       visible={visible}
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
+      <View style={styles.modalContainer}>
           <View style={styles.sessionCompleteHeader}>
             <Text style={styles.sessionCompleteTitle}>Session Complete!</Text>
             <Text style={styles.sessionCompleteSubtitle}>Write your notes.</Text>
@@ -192,17 +192,19 @@ const NotesModal: React.FC<NotesModalProps> = ({
             <Text style={styles.taskInfoText}>Task: {taskTitle}</Text>
           </View>
           
-          <View style={styles.notesInputContainer}>
-            <TextInput
-              style={styles.notesInputFullScreen}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Jot down your key takeaways, brilliant ideas, or anything else on your mind..."
-              placeholderTextColor="#999"
-              multiline={true}
-              textAlignVertical="top"
-            />
-          </View>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}>
+            <View style={styles.notesInputContainer}>
+              <TextInput
+                style={styles.notesInputFullScreen}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Jot down your key takeaways, brilliant ideas, or anything else on your mind..."
+                placeholderTextColor="#999"
+                multiline={true}
+                textAlignVertical="top"
+              />
+            </View>
+          </KeyboardAvoidingView>
           
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -254,31 +256,14 @@ const NotesModal: React.FC<NotesModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   modalContainer: {
+    flex: 1,
     backgroundColor: 'white',
-    borderRadius: 20,
-    width: '90%',
-    maxWidth: 500,
-    height: '90%',
-    maxHeight: '80%',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    overflow: 'hidden',
   },
   sessionCompleteHeader: {
     alignItems: 'center',

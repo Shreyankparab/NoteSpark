@@ -51,9 +51,8 @@ const ImageCaptureModal = ({
       // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.95,
         base64: true,
       });
 
@@ -87,9 +86,8 @@ const ImageCaptureModal = ({
 
       // Launch camera
       const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
+        allowsEditing: false,
+        quality: 0.95,
         base64: true,
       });
 
@@ -217,12 +215,10 @@ const ImageCaptureModal = ({
                 : "Capture or select an image for your completed session"}
             </Text>
 
-            <View style={styles.detailsContainer}>
+          <View style={styles.detailsContainer}>
               <View style={styles.detailRow}>
                 <Ionicons name="time-outline" size={20} color="#fff" />
-                <Text style={styles.detailText}>
-                  Duration: {Math.floor(duration / 60)} minutes
-                </Text>
+                <Text style={styles.detailText}>Duration: {duration} minutes</Text>
               </View>
 
               <View style={styles.detailRow}>
@@ -279,6 +275,16 @@ const ImageCaptureModal = ({
                   </>
                 )}
               </TouchableOpacity>
+              {/* Optional crop button after selection to avoid forced cropping */}
+              {image && typeof image === 'object' && (image as any).base64 ? (
+                <TouchableOpacity
+                  style={[styles.button, styles.imageButton]}
+                  onPress={() => { /* Hook in a future cropper here */ }}
+                  disabled={true}
+                >
+                  <Text style={styles.buttonText}>Crop (coming soon)</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : (
             <View style={styles.buttonContainer}>

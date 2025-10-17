@@ -244,6 +244,7 @@ export default function TimerScreen() {
   } | null>(null);
   const [isLogin, setIsLogin] = useState(true);
   const [streak, setStreak] = useState(0);
+  const [totalFocusMinutes, setTotalFocusMinutes] = useState(0);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -282,7 +283,16 @@ export default function TimerScreen() {
           setIsActive(true);
         } else {
           setSeconds(0);
-          await handleTimerCompletion();
+          // If timer finished while app was backgrounded, complete once
+          if (isActive) {
+            await handleTimerCompletion();
+          } else {
+            // Ensure notifications are cleared and state reset
+            await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
+            await AsyncStorage.setItem(TIMER_STATUS_KEY, "idle");
+            cancelTimerNotification();
+            setIsActive(false);
+          }
         }
       } else {
         setIsActive(false);
@@ -502,7 +512,7 @@ export default function TimerScreen() {
 
     const completedAt = Date.now();
     const taskTitle = currentTask?.title || "Pomodoro Session";
-    const duration = initialTime;
+    const duration = initialTime / 60; // store as minutes
 
     // Do NOT upload anything yet. We will open the image modal and let the
     // user choose an image, then perform upload from there to avoid Blob issues.
@@ -543,6 +553,34 @@ export default function TimerScreen() {
     if (user) {
       const newStreak = await updateStreak(user.uid);
       setStreak(newStreak);
+      
+      // Check for achievements after streak update
+      try {
+        const {
+          checkStreakAchievements,
+          checkFocusTimeAchievements,
+        } = require("../utils/achievements");
+        const {
+          showMultipleAchievementNotifications,
+        } = require("../utils/achievementNotification");
+
+        // Check for streak and focus time achievements
+        const newStreakAchievements = await checkStreakAchievements(user.uid, newStreak);
+        const newFocusAchievements = await checkFocusTimeAchievements(
+          user.uid,
+          totalFocusMinutes || 0
+        );
+
+        // Combine all new achievements
+        const allNewAchievements = [...newStreakAchievements, ...newFocusAchievements];
+
+        if (allNewAchievements.length > 0) {
+          console.log(`🏆 Showing ${allNewAchievements.length} new achievements after session completion`);
+          showMultipleAchievementNotifications(allNewAchievements);
+        }
+      } catch (err) {
+        console.error("Failed to check achievements after session completion:", err);
+      }
     }
 
     // Save session data for modals
@@ -634,10 +672,39 @@ export default function TimerScreen() {
         setShowAuthModal(false);
         const updatedStreak = await updateStreak(currentUser.uid);
         setStreak(updatedStreak);
+        
+        // Check for achievements after streak is updated
+        try {
+          const {
+            checkStreakAchievements,
+            checkFocusTimeAchievements,
+            getUserAchievements,
+          } = require("../utils/achievements");
+          const {
+            showMultipleAchievementNotifications,
+          } = require("../utils/achievementNotification");
+
+          // Check for streak and focus time achievements
+          const newStreakAchievements = await checkStreakAchievements(currentUser.uid, updatedStreak);
+          const newFocusAchievements = await checkFocusTimeAchievements(
+            currentUser.uid,
+            totalFocusMinutes || 0
+          );
+
+          // Combine all new achievements
+          const allNewAchievements = [...newStreakAchievements, ...newFocusAchievements];
+
+          if (allNewAchievements.length > 0) {
+            console.log(`🏆 Showing ${allNewAchievements.length} new achievements`);
+            showMultipleAchievementNotifications(allNewAchievements);
+          }
+        } catch (err) {
+          console.error("Failed to check achievements on login:", err);
+        }
       } else setShowAuthModal(true);
     });
     return () => unsubscribe();
-  }, []);
+  }, [totalFocusMinutes]);
 
   const formatTime = (sec: number) => {
     const m = Math.floor(sec / 60);
@@ -943,7 +1010,10 @@ export default function TimerScreen() {
         );
       case "Notes":
         return (
-          <NotesContent />
+          <NotesContent
+            onOpenProfile={() => setShowProfileModal(true)}
+            onOpenSettings={() => setShowSettingsModal(true)}
+          />
         );
       case "Flashcards":
         return (
@@ -985,47 +1055,63 @@ export default function TimerScreen() {
     <LinearGradient colors={["#6A85B6", "#BAC8E0"]} style={{ flex: 1 }}>
       {/* Top Bar (hidden on Notes for dedicated header/search) */}
       {activeScreen !== "Notes" && (
-      <View style={styles.topBar}>
-        <View style={styles.leftTopContainer}>
-          <View style={styles.streakContainer}>
-            <Ionicons name="flame" size={20} color="#FF6347" />
-            <Text style={styles.streakText}>
-              Streak: {streak} {streak === 1 ? "day" : "days"}
-            </Text>
-          </View>
-          {!areNotificationsAvailable() && (
-            <View style={styles.notificationStatus}>
-              <Ionicons
-                name="notifications-off"
-                size={16}
-                color="rgba(255,255,255,0.7)"
-              />
-              <Text style={styles.notificationStatusText}>Expo Go</Text>
+        <View style={styles.topBar}>
+          <View style={styles.leftTopContainer}>
+            <View style={styles.streakContainer}>
+              <Ionicons name="flame" size={20} color="#FF6347" />
+              <Text style={styles.streakText}>
+                Streak: {streak} {streak === 1 ? "day" : "days"}
+              </Text>
             </View>
-          )}
-        </View>
+            {!areNotificationsAvailable() && (
+              <View style={styles.notificationStatus}>
+                <Ionicons
+                  name="notifications-off"
+                  size={16}
+                  color="rgba(255,255,255,0.7)"
+                />
+                <Text style={styles.notificationStatusText}>Expo Go</Text>
+              </View>
+            )}
+          </View>
 
-        <View style={styles.topRightButtons}>
-          {user && (
+          <View style={styles.topRightButtons}>
             <TouchableOpacity
               onPress={() => setShowProfileModal(true)}
               style={{ marginRight: 16 }}
             >
-              <Ionicons name="person-circle-outline" size={28} color="white" />
+              {user?.photoURL ? (
+                <Image
+                  source={{ uri: user.photoURL }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.8)",
+                  }}
+                />
+              ) : (
+                <Ionicons
+                  name="person-circle-outline"
+                  size={28}
+                  color="white"
+                />
+              )}
             </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={() => setShowSettingsModal(true)}>
-            <Ionicons name="settings-outline" size={22} color="white" />
-          </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowSettingsModal(true)}>
+              <Ionicons name="settings-outline" size={22} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
       )}
 
       {/* Content */}
-      <View style={[
-        styles.contentArea,
-        activeScreen === "Notes" && styles.contentAreaStretch
-      ]}
+      <View
+        style={[
+          styles.contentArea,
+          activeScreen === "Notes" && styles.contentAreaStretch,
+        ]}
       >
         {renderContent()}
       </View>
@@ -1169,6 +1255,13 @@ export default function TimerScreen() {
         user={user}
         onLogout={handleLogout}
         streak={streak}
+        totalFocusMinutes={tasks.reduce(
+          (sum, t) =>
+            t.status === "completed" && t.completedAt
+              ? sum + (t.duration || 0)
+              : sum,
+          0
+        )}
       />
 
       <TaskInputModal

@@ -31,6 +31,8 @@ const TimerContent: React.FC<TimerContentProps> = ({
   onAddOneMinute,
 }) => {
   const [showAddMinute, setShowAddMinute] = useState(false);
+  // Show automatically in the final 30 seconds of the countdown
+  const shouldAlwaysShowAdd = isActive && seconds <= 30;
   const rotationAngle = (progressPercentage / 100) * 360;
   const isOverHalf = progressPercentage > 50;
 
@@ -78,7 +80,7 @@ const TimerContent: React.FC<TimerContentProps> = ({
 
         <View style={styles.timerCircleContent}>
           <Text style={styles.timerText}>{formatTime(seconds)}</Text>
-          {isActive && showAddMinute && (
+          {(shouldAlwaysShowAdd || (isActive && showAddMinute)) && (
             <TouchableOpacity
               style={styles.addMinuteButton}
               onPress={() => {

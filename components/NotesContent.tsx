@@ -32,10 +32,11 @@ import { uploadToCloudinaryBase64 } from "../utils/imageStorage";
 import { Ionicons } from '@expo/vector-icons';
 
 interface NotesContentProps {
-  // Add any props if needed
+  onOpenProfile?: () => void;
+  onOpenSettings?: () => void;
 }
 
-const NotesContent: React.FC<NotesContentProps> = () => {
+const NotesContent: React.FC<NotesContentProps> = ({ onOpenProfile, onOpenSettings }) => {
   const [notes, setNotes] = useState<PomodoroNote[]>([]);
   const [filteredNotes, setFilteredNotes] = useState<PomodoroNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -226,7 +227,10 @@ const NotesContent: React.FC<NotesContentProps> = () => {
     }
   };
 
-  const formatDuration = (minutes: number): string => {
+  // Be defensive: some older notes stored duration in SECONDS.
+  // If the value looks like seconds (<= 180), convert to minutes.
+  const formatDuration = (raw: number): string => {
+    const minutes = raw <= 180 ? Math.max(1, Math.round(raw / 60)) : Math.round(raw);
     if (minutes >= 60) {
       const hours = Math.floor(minutes / 60);
       const mins = minutes % 60;
@@ -300,9 +304,17 @@ const NotesContent: React.FC<NotesContentProps> = () => {
           {!showSearch ? (
             <>
               <Text style={styles.title}>Notes</Text>
-              <TouchableOpacity onPress={() => setShowSearch(true)}>
-                <Ionicons name="search" size={24} color="#fff" />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <TouchableOpacity onPress={onOpenProfile}>
+                  <Ionicons name="person-circle-outline" size={26} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onOpenSettings}>
+                  <Ionicons name="settings-outline" size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowSearch(true)}>
+                  <Ionicons name="search" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
             </>
           ) : (
             <View style={styles.searchContainer}>
