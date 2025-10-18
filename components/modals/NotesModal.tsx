@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -9,12 +9,15 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from 'react-native';
-import { KeyboardAvoidingView, Platform } from 'react-native';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/firebaseConfig';
 import { PomodoroNote } from '../../types';
 import { aiService } from '../../utils/aiService';
+import { Ionicons } from '@expo/vector-icons';
 
 interface NotesModalProps {
   visible: boolean;
@@ -37,7 +40,28 @@ const NotesModal: React.FC<NotesModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [processingAI, setProcessingAI] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const voiceRef = useRef<any>(null);
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+      // Cleanup voice on unmount
+      if (voiceRef.current?.destroy) {
+        voiceRef.current.destroy().catch(() => {});
+      }
+    };
+  }, []);
 
   const handleSaveNotes = async () => {
     const user = auth.currentUser;
@@ -77,36 +101,68 @@ const NotesModal: React.FC<NotesModalProps> = ({
     onClose();
   };
 
-  const ensureVoice = async () => {
-    if (voiceRef.current) return voiceRef.current;
-    try {
-      // Using @react-native-community/voice instead of react-native-voice
-      const voice = (await import('@react-native-community/voice')).default;
-      voiceRef.current = voice;
-      return voice;
-    } catch (e) {
-      Alert.alert('Speech Unavailable', 'Speech-to-text is not available on this device.');
-      throw e;
-    }
-  };
-
   const startListening = async () => {
     try {
-      const Voice = await ensureVoice();
-      Voice.onSpeechResults = (e: any) => {
-        const text: string | undefined = e.value?.[0];
-        if (text) setNotes((prev) => (prev ? prev + ' ' : '') + text);
-      };
-      await Voice.start('en-US');
-      setIsListening(true);
-    } catch {}
+      // Import and create voice recognition instance
+      const { default: VoiceRecognition } = await import('../../utils/voiceRecognition');
+      
+      if (!VoiceRecognition.isAvailable()) {
+        Alert.alert(
+          'Speech Recognition Unavailable',
+          'Speech-to-text is only available on web browsers. Please type your notes or use the web version.'
+        );
+        return;
+      }
+      
+      if (!voiceRef.current) {
+        voiceRef.current = new VoiceRecognition();
+      }
+      
+      const voice = voiceRef.current;
+      
+      // Set up event handlers
+      voice.setCallbacks({
+        onStart: () => {
+          console.log('🎤 Speech recognition started');
+          setIsListening(true);
+        },
+        onEnd: () => {
+          console.log('🎤 Speech recognition ended');
+          setIsListening(false);
+        },
+        onResults: (results: string[]) => {
+          const text = results[0];
+          console.log('🎤 Speech results:', text);
+          if (text) {
+            setNotes((prev) => {
+              const separator = prev && !prev.endsWith(' ') ? ' ' : '';
+              return prev + separator + text;
+            });
+          }
+        },
+        onError: (error: any) => {
+          console.error('🎤 Speech error:', error);
+          setIsListening(false);
+          Alert.alert('Speech Error', 'Failed to recognize speech. Please try again.');
+        },
+      });
+      
+      await voice.start();
+    } catch (error) {
+      console.error('🎤 Failed to start voice recognition:', error);
+      setIsListening(false);
+    }
   };
 
   const stopListening = async () => {
     try {
-      const Voice = await ensureVoice();
-      await Voice.stop();
-    } catch {}
+      if (voiceRef.current) {
+        await voiceRef.current.stop();
+        console.log('🎤 Voice recognition stopped');
+      }
+    } catch (error) {
+      console.error('🎤 Error stopping voice:', error);
+    }
     setIsListening(false);
   };
   
@@ -181,19 +237,49 @@ const NotesModal: React.FC<NotesModalProps> = ({
       visible={visible}
       onRequestClose={onClose}
     >
-      <View style={styles.modalContainer}>
+      <KeyboardAvoidingView 
+        style={styles.modalContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <View style={styles.modalContainer}>
           <View style={styles.sessionCompleteHeader}>
-            <Text style={styles.sessionCompleteTitle}>Session Complete!</Text>
-            <Text style={styles.sessionCompleteSubtitle}>Write your notes.</Text>
+            <Text style={styles.sessionCompleteTitle}>🎉 Session Complete!</Text>
+            <Text style={styles.sessionCompleteSubtitle}>Capture your insights</Text>
           </View>
           
-          {/* Task info at the top */}
+          {/* Task info */}
           <View style={styles.taskInfoContainer}>
-            <Text style={styles.taskInfoText}>Task: {taskTitle}</Text>
+            <Text style={styles.taskInfoText}>📝 {taskTitle}</Text>
+            <Text style={styles.durationText}>{formatDuration(duration)}</Text>
           </View>
           
-          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}>
+          {/* Scrollable content area */}
+          <ScrollView 
+            style={styles.scrollContent}
+            contentContainerStyle={styles.scrollContentContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.notesInputContainer}>
+              <View style={styles.inputHeader}>
+                <Text style={styles.inputLabel}>Your Notes</Text>
+                <TouchableOpacity
+                  style={[styles.micButton, isListening && styles.micButtonActive]}
+                  onPress={isListening ? stopListening : startListening}
+                  disabled={isLoading}
+                >
+                  <Ionicons 
+                    name={isListening ? "mic" : "mic-outline"} 
+                    size={20} 
+                    color="white" 
+                  />
+                  <Text style={styles.micButtonText}>
+                    {isListening ? 'Listening...' : 'Mic'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              
               <TextInput
                 style={styles.notesInputFullScreen}
                 value={notes}
@@ -202,28 +288,17 @@ const NotesModal: React.FC<NotesModalProps> = ({
                 placeholderTextColor="#999"
                 multiline={true}
                 textAlignVertical="top"
+                editable={!isLoading}
               />
             </View>
-          </KeyboardAvoidingView>
-          
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={styles.saveNotesButton}
-              onPress={handleSaveNotes}
-              disabled={isLoading}
-            >
-              <Text style={styles.saveNotesButtonText}>
-                {isLoading ? 'Saving...' : 'Save Notes'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.aiButtonsContainer}>
-            {notes.trim().length > 0 && (
-              <View style={styles.aiButtonRow}>
+            
+            {/* AI Buttons - only show when not keyboard visible */}
+            {notes.trim().length > 0 && !keyboardVisible && (
+              <View style={styles.aiButtonsRow}>
                 {processingAI ? (
                   <View style={styles.aiButton}>
                     <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.aiButtonText}>Processing...</Text>
                   </View>
                 ) : (
                   <>
@@ -232,6 +307,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
                         style={styles.aiButton}
                         onPress={handleAISummarize}
                       >
+                        <Ionicons name="sparkles" size={16} color="#fff" />
                         <Text style={styles.aiButtonText}>AI Summarize</Text>
                       </TouchableOpacity>
                     ) : (
@@ -239,6 +315,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
                         style={styles.aiButton}
                         onPress={handleAIEnhance}
                       >
+                        <Ionicons name="sparkles" size={16} color="#fff" />
                         <Text style={styles.aiButtonText}>AI Enhance</Text>
                       </TouchableOpacity>
                     )}
@@ -246,7 +323,10 @@ const NotesModal: React.FC<NotesModalProps> = ({
                 )}
               </View>
             )}
-            
+          </ScrollView>
+          
+          {/* Fixed bottom buttons */}
+          <View style={styles.bottomButtonsContainer}>
             <TouchableOpacity
               style={styles.skipButton}
               onPress={handleSkip}
@@ -254,8 +334,24 @@ const NotesModal: React.FC<NotesModalProps> = ({
             >
               <Text style={styles.skipButtonText}>Skip</Text>
             </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.saveNotesButton}
+              onPress={handleSaveNotes}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Text style={styles.saveNotesButtonText}>Save Notes</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -263,116 +359,179 @@ const NotesModal: React.FC<NotesModalProps> = ({
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: '#f8f9fa',
   },
   sessionCompleteHeader: {
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e5e7eb',
   },
   sessionCompleteTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    color: '#111827',
+    marginBottom: 6,
     textAlign: 'center',
   },
   sessionCompleteSubtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: '#6b7280',
     textAlign: 'center',
   },
   taskInfoContainer: {
-    padding: 15,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
-    margin: 15,
+    padding: 16,
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   taskInfoText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#111827',
+    flex: 1,
+  },
+  durationText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2196F3',
+    marginLeft: 12,
+  },
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    padding: 16,
+    paddingBottom: 32,
   },
   notesInputContainer: {
-    padding: 15,
-    flex: 1,
-    position: 'relative',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  inputHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
   },
   notesInputFullScreen: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: '#333',
-    backgroundColor: '#fff',
-    minHeight: 150,
-    height: '100%',
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
+    minHeight: 200,
+    maxHeight: 400,
     textAlignVertical: 'top',
   },
-  buttonRow: {
-    padding: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  saveNotesButton: {
+  micButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#2196F3',
-    paddingVertical: 15,
-    borderRadius: 12,
-    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
   },
-  saveNotesButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  micButtonActive: {
+    backgroundColor: '#ef4444',
+  },
+  micButtonText: {
     color: 'white',
-  },
-  aiButtonsContainer: {
-    padding: 15,
-    paddingTop: 0,
-  },
-  aiButtonRow: {
-    marginBottom: 15,
-  },
-  skipButton: {
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    paddingVertical: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  skipButtonText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#666',
+  },
+  aiButtonsRow: {
+    marginTop: 16,
+    alignItems: 'center',
   },
   aiButton: {
+    flexDirection: 'row',
     backgroundColor: '#9c27b0',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 150,
+    gap: 8,
+    shadowColor: '#9c27b0',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   aiButtonText: {
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
   },
-  micButton: {
-    position: 'absolute',
-    right: 30,
-    bottom: 30,
-    backgroundColor: '#2196F3',
-    borderRadius: 25,
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+  bottomButtonsContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 8,
   },
-  micIcon: {
+  skipButton: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  saveNotesButton: {
+    flex: 2,
+    backgroundColor: '#2196F3',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  saveNotesButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
     color: 'white',
   },
 });

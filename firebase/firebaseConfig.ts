@@ -1,10 +1,14 @@
 // firebase/firebaseConfig.ts
 import { initializeApp } from "firebase/app";
-import { initializeAuth, getReactNativePersistence, GoogleAuthProvider } from "firebase/auth";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { 
+  getAuth,
+  GoogleAuthProvider,
+  browserLocalPersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
+import { Platform } from "react-native";
 
 // Firebase config
 const firebaseConfig = {
@@ -19,10 +23,15 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Auth instance with persistent storage (React Native)
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+// Auth instance - getAuth works for both web and mobile
+export const auth = getAuth(app);
+
+// Set persistence for web
+if (Platform.OS === 'web') {
+  auth.setPersistence(browserLocalPersistence).catch((error) => {
+    console.error('Failed to set persistence:', error);
+  });
+}
 
 // Google provider (for web usage)
 export const googleProvider = new GoogleAuthProvider();

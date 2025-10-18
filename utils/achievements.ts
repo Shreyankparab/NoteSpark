@@ -7,6 +7,7 @@ import {
   query,
   where,
   getDocs,
+  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
@@ -260,18 +261,16 @@ export const unlockAchievement = async (
   achievementId: string
 ): Promise<Achievement | null> => {
   try {
-    // Check if achievement is already unlocked
+    // Use composite key to ensure uniqueness: userId_achievementId
+    const compositeId = `${userId}_${achievementId}`;
     const achievementsRef = collection(db, "achievements");
-    const q = query(
-      achievementsRef,
-      where("userId", "==", userId),
-      where("id", "==", achievementId)
-    );
+    const achievementDocRef = doc(achievementsRef, compositeId);
 
-    const querySnapshot = await getDocs(q);
+    // Check if achievement is already unlocked using the composite ID
+    const docSnap = await getDoc(achievementDocRef);
 
     // If achievement already unlocked, return null
-    if (!querySnapshot.empty) {
+    if (docSnap.exists()) {
       console.log(
         `🏆 Achievement ${achievementId} already unlocked for user ${userId}`
       );
@@ -292,8 +291,7 @@ export const unlockAchievement = async (
       unlockedAt: serverTimestamp(),
     };
 
-    // Save to Firestore
-    const achievementDocRef = doc(achievementsRef);
+    // Save to Firestore with composite ID (prevents duplicates)
     await setDoc(achievementDocRef, unlockedAchievement);
 
     console.log(
@@ -335,5 +333,76 @@ export const getUserAchievements = async (
   } catch (error) {
     console.error(`❌ Failed to load achievements for user ${userId}:`, error);
     return [];
+  }
+};
+
+/**
+ * Clean up duplicate achievements for a user
+ * This function removes duplicate achievement entries and keeps only one per achievement type
+ * @param userId User ID
+ * @returns Number of duplicates removed
+ */
+export const cleanupDuplicateAchievements = async (
+  userId: string
+): Promise<number> => {
+  try {
+    console.log(`🧹 Starting duplicate achievement cleanup for user ${userId}`);
+    
+    const achievementsRef = collection(db, "achievements");
+    const q = query(achievementsRef, where("userId", "==", userId));
+    const querySnapshot = await getDocs(q);
+
+    // Group achievements by achievement ID
+    const achievementGroups = new Map<string, any[]>();
+    
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      const achievementId = data.id;
+      
+      if (!achievementGroups.has(achievementId)) {
+        achievementGroups.set(achievementId, []);
+      }
+      
+      achievementGroups.get(achievementId)!.push({
+        docId: doc.id,
+        data: data,
+        unlockedAt: data.unlockedAt?.toMillis?.() || 0,
+      });
+    });
+
+    let duplicatesRemoved = 0;
+
+    // For each achievement type, keep only the earliest one and delete the rest
+    for (const [achievementId, docs] of achievementGroups.entries()) {
+      if (docs.length > 1) {
+        console.log(`🔍 Found ${docs.length} duplicates for achievement ${achievementId}`);
+        
+        // Sort by unlock time (keep the earliest)
+        docs.sort((a, b) => a.unlockedAt - b.unlockedAt);
+        
+        // Keep the first one, delete the rest
+        const toKeep = docs[0];
+        const toDelete = docs.slice(1);
+        
+        console.log(`✅ Keeping document ${toKeep.docId} (unlocked at ${new Date(toKeep.unlockedAt).toISOString()})`);
+        
+        // Delete duplicates
+        for (const duplicate of toDelete) {
+          try {
+            await deleteDoc(doc(achievementsRef, duplicate.docId));
+            console.log(`🗑️ Deleted duplicate ${duplicate.docId}`);
+            duplicatesRemoved++;
+          } catch (error) {
+            console.error(`❌ Failed to delete duplicate ${duplicate.docId}:`, error);
+          }
+        }
+      }
+    }
+
+    console.log(`✅ Cleanup complete: Removed ${duplicatesRemoved} duplicate achievements`);
+    return duplicatesRemoved;
+  } catch (error) {
+    console.error(`❌ Failed to cleanup duplicate achievements for user ${userId}:`, error);
+    return 0;
   }
 };

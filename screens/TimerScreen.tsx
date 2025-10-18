@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
 import {
   User,
   onAuthStateChanged,
@@ -100,6 +101,8 @@ import {
   cancelTimerNotification,
   setupNotifications,
   areNotificationsAvailable,
+  scheduleTimerCompletionNotification,
+  cancelTimerCompletionNotification,
 } from "../utils/notifications";
 import { loadSettings, saveSettings } from "../utils/storage";
 import * as WebBrowser from "expo-web-browser";
@@ -278,6 +281,7 @@ export default function TimerScreen() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [showAppearanceModal, setShowAppearanceModal] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
+  const [completionNotificationId, setCompletionNotificationId] = useState<string | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [showTimeTableModal, setShowTimeTableModal] = useState(false);
@@ -328,17 +332,18 @@ export default function TimerScreen() {
           setSeconds(remainingTime);
           setIsActive(true);
         } else {
+          // Timer finished while app was backgrounded
           setSeconds(0);
-          // If timer finished while app was backgrounded, complete once
-          if (isActive) {
-            await handleTimerCompletion();
-          } else {
-            // Ensure notifications are cleared and state reset
-            await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
-            await AsyncStorage.setItem(TIMER_STATUS_KEY, "idle");
-            cancelTimerNotification();
-            setIsActive(false);
-          }
+          setIsActive(false);
+          
+          // Always trigger completion if timer was active
+          console.log("⏰ Timer completed in background, triggering completion...");
+          await handleTimerCompletion();
+          
+          // Clean up storage
+          await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
+          await AsyncStorage.setItem(TIMER_STATUS_KEY, "idle");
+          cancelTimerNotification();
         }
       } else {
         setIsActive(false);
@@ -372,6 +377,24 @@ export default function TimerScreen() {
 
     initializeSettings();
     setupNotifications();
+    
+    // Handle notification responses (when user taps notification)
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      console.log('📱 Notification tapped:', data);
+      
+      if (data.type === 'timer_complete') {
+        // User tapped the completion notification
+        console.log('⏰ User tapped timer completion notification');
+        // The app is already open, completion screen should be visible
+        // If not, trigger it again
+        checkAndRestoreTimer();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   // Setup Firestore real-time listener for tasks
@@ -729,8 +752,14 @@ export default function TimerScreen() {
             newSeconds % 60 === 59 || // When minutes change
             newSeconds <= 60; // Every second in last minute
 
-          if (shouldUpdateNotification) {
+          if (shouldUpdateNotification && newSeconds > 0) {
             scheduleTimerNotification(newSeconds, currentTask?.title);
+          }
+
+          // Trigger completion when timer reaches 0
+          if (newSeconds <= 0) {
+            handleTimerCompletion();
+            return 0; // Set to 0 to prevent negative values
           }
 
           return newSeconds;
@@ -739,8 +768,9 @@ export default function TimerScreen() {
 
       // Initial notification
       scheduleTimerNotification(seconds, currentTask?.title);
-    } else if (seconds === 0) {
-      if (isActive) handleTimerCompletion();
+    } else if (seconds <= 0 && isActive) {
+      // Handle case where timer already completed (e.g., app was in background)
+      handleTimerCompletion();
       cancelTimerNotification();
     } else {
       cancelTimerNotification();
@@ -758,38 +788,51 @@ export default function TimerScreen() {
         const updatedStreak = await updateStreak(currentUser.uid);
         setStreak(updatedStreak);
         
-        // Check for achievements after streak is updated
+        // Migrate old achievements to composite ID format (one-time operation)
+        try {
+          const { migrateUserAchievements, needsMigration } = require("../utils/migrateAchievements");
+          const needsUpdate = await needsMigration(currentUser.uid);
+          
+          if (needsUpdate) {
+            console.log("🔄 Migrating achievements to new format...");
+            const result = await migrateUserAchievements(currentUser.uid);
+            console.log(`✅ Migration complete: ${result.migrated} migrated, ${result.skipped} skipped, ${result.errors} errors`);
+          }
+        } catch (err) {
+          console.error("Failed to migrate achievements:", err);
+        }
+        
+        // Clean up duplicate achievements (silent operation)
+        try {
+          const { cleanupDuplicateAchievements } = require("../utils/achievements");
+          const duplicatesRemoved = await cleanupDuplicateAchievements(currentUser.uid);
+          if (duplicatesRemoved > 0) {
+            console.log(`🧹 Removed ${duplicatesRemoved} duplicate achievement(s) on login`);
+          }
+        } catch (err) {
+          console.error("Failed to cleanup duplicate achievements:", err);
+        }
+        
+        // Silently check for achievements on login (no notifications)
+        // Notifications will only show when user actually earns new achievements during app usage
         try {
           const {
             checkStreakAchievements,
             checkFocusTimeAchievements,
             checkTasksCompletedAchievements,
-            getUserAchievements,
           } = require("../utils/achievements");
-          const {
-            showMultipleAchievementNotifications,
-          } = require("../utils/achievementNotification");
 
-          // Check for streak and focus time achievements
-          const newStreakAchievements = await checkStreakAchievements(currentUser.uid, updatedStreak);
-          const newFocusAchievements = await checkFocusTimeAchievements(
-            currentUser.uid,
-            totalFocusMinutes || 0
-          );
+          // Silently check and unlock achievements (returns empty array if already unlocked)
+          await checkStreakAchievements(currentUser.uid, updatedStreak);
+          await checkFocusTimeAchievements(currentUser.uid, totalFocusMinutes || 0);
 
-          // Check for task completion achievements (will be checked again when tasks load)
+          // Task achievements will be checked when tasks load
           const completedTasksCount = tasks.filter(t => t.status === "completed").length;
-          const newTaskAchievements = completedTasksCount > 0 
-            ? await checkTasksCompletedAchievements(currentUser.uid, completedTasksCount)
-            : [];
-
-          // Combine all new achievements
-          const allNewAchievements = [...newStreakAchievements, ...newFocusAchievements, ...newTaskAchievements];
-
-          if (allNewAchievements.length > 0) {
-            console.log(`🏆 Showing ${allNewAchievements.length} new achievements`);
-            showMultipleAchievementNotifications(allNewAchievements);
+          if (completedTasksCount > 0) {
+            await checkTasksCompletedAchievements(currentUser.uid, completedTasksCount);
           }
+
+          console.log("✅ Silently checked achievements on login (no notifications)");
         } catch (err) {
           console.error("Failed to check achievements on login:", err);
         }
@@ -894,6 +937,13 @@ export default function TimerScreen() {
       await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
       await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
 
+      // Schedule completion notification
+      const notificationId = await scheduleTimerCompletionNotification(
+        seconds,
+        currentTask?.title
+      );
+      setCompletionNotificationId(notificationId);
+
       // Update current task status to active in Firestore
       if (currentTask) {
         try {
@@ -913,6 +963,10 @@ export default function TimerScreen() {
       await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
       await AsyncStorage.setItem(TIMER_STATUS_KEY, "paused");
       cancelTimerNotification();
+      
+      // Cancel completion notification when paused
+      await cancelTimerCompletionNotification(completionNotificationId);
+      setCompletionNotificationId(null);
 
       // Update current task status to pending in Firestore
       if (currentTask) {
@@ -1062,6 +1116,10 @@ export default function TimerScreen() {
     await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
     await AsyncStorage.removeItem(TIMER_STATUS_KEY);
     cancelTimerNotification();
+    
+    // Cancel completion notification on reset
+    await cancelTimerCompletionNotification(completionNotificationId);
+    setCompletionNotificationId(null);
 
     // Update current task to pending in Firestore
     if (currentTask && user) {

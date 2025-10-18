@@ -71,6 +71,60 @@ export const cancelTimerNotification = async () => {
   }
 };
 
+// Schedule a notification for when the timer completes
+export const scheduleTimerCompletionNotification = async (
+  durationInSeconds: number,
+  taskTitle?: string
+) => {
+  // Skip notifications entirely in Expo Go
+  if (isExpoGo) {
+    console.log("📱 Expo Go - completion notification skipped");
+    return null;
+  }
+
+  try {
+    const taskText = taskTitle ? ` - ${taskTitle}` : '';
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "⏰ Timer Complete!",
+        body: `Great work! Your focus session is complete${taskText}`,
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        vibrate: [0, 250, 250, 250],
+        categoryIdentifier: 'timer_complete',
+        data: {
+          type: 'timer_complete',
+          taskTitle: taskTitle || null,
+        },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: durationInSeconds,
+      },
+    });
+    
+    console.log(`🔔 Scheduled completion notification for ${durationInSeconds}s - ID: ${notificationId}`);
+    return notificationId;
+  } catch (error) {
+    console.warn("⚠️ Failed to schedule completion notification:", error);
+    return null;
+  }
+};
+
+// Cancel timer completion notification
+export const cancelTimerCompletionNotification = async (notificationId: string | null) => {
+  if (isExpoGo || !notificationId) {
+    return;
+  }
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+    console.log(`🔕 Cancelled completion notification: ${notificationId}`);
+  } catch (error) {
+    console.warn("⚠️ Failed to cancel completion notification:", error);
+  }
+};
+
 // Setup notification permissions and categories
 export const setupNotifications = async () => {
   // Skip notifications entirely in Expo Go
