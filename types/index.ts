@@ -3,6 +3,15 @@ export type ScreenName = "Timer" | "Notes" | "Flashcards" | "Tasks" | "Profile";
 
 export type SoundPreset = "Chime (Default)" | "Bell Tone" | "Zen Gong" | "Digital Alarm";
 
+export interface Subject {
+  id: string;
+  name: string;
+  color: string; // hex color code
+  icon: string; // emoji or icon name
+  createdAt: number;
+  userId: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -11,6 +20,7 @@ export interface Task {
   completedAt?: number;
   status: "active" | "completed" | "pending";
   userId: string;
+  subjectId?: string; // optional subject assignment
 }
 
 export interface UserSettings {
@@ -28,6 +38,7 @@ export interface PomodoroNote {
   completedAt: number; // timestamp
   userId: string;
   imageUrl?: string;
+  subjectId?: string; // optional subject assignment
 }
 
 // --- ACHIEVEMENT TYPES ---

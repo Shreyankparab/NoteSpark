@@ -26,6 +26,7 @@ interface NotesModalProps {
   duration: number; // in minutes
   completedAt: number;
   imageUrl?: string;
+  subjectId?: string;
 }
 
 const NotesModal: React.FC<NotesModalProps> = ({
@@ -35,6 +36,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
   duration,
   completedAt,
   imageUrl,
+  subjectId,
 }) => {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -72,7 +74,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
 
     setIsLoading(true);
     try {
-      const noteData: Omit<PomodoroNote, 'id'> = {
+      const noteData: any = {
         taskTitle,
         duration,
         notes: notes.trim(),
@@ -80,6 +82,20 @@ const NotesModal: React.FC<NotesModalProps> = ({
         userId: user.uid,
         imageUrl: imageUrl || '',
       };
+
+      // Only add subjectId if it exists
+      if (subjectId) {
+        noteData.subjectId = subjectId;
+        console.log('📝 Saving note WITH subjectId:', subjectId);
+      } else {
+        console.log('⚠️ Saving note WITHOUT subjectId');
+      }
+
+      console.log('📄 Note data to save:', { 
+        taskTitle: noteData.taskTitle, 
+        hasSubjectId: !!noteData.subjectId,
+        subjectId: noteData.subjectId 
+      });
 
       await addDoc(collection(db, 'notes'), noteData);
       

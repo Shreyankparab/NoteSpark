@@ -30,9 +30,10 @@ import {
   doc,
   updateDoc,
   getDoc,
+  getDocs,
 } from "firebase/firestore";
 import { auth, db } from "../firebase/firebaseConfig";
-import { PomodoroNote } from "../types";
+import { PomodoroNote, Subject } from "../types";
 import CustomNoteModal from "./modals/CustomNoteModal";
 import { aiService } from "../utils/aiService";
 import { uploadToCloudinaryBase64 } from "../utils/imageStorage";
@@ -41,15 +42,23 @@ import { Ionicons } from "@expo/vector-icons";
 interface NotesContentProps {
   onOpenProfile?: () => void;
   onOpenSettings?: () => void;
+  onOpenAppearance?: () => void;
+  onOpenTimeTable?: () => void;
+  onOpenSubjects?: () => void;
 }
 
 const NotesContent: React.FC<NotesContentProps> = ({
   onOpenProfile,
   onOpenSettings,
+  onOpenAppearance,
+  onOpenTimeTable,
+  onOpenSubjects,
 }) => {
   const [notes, setNotes] = useState<PomodoroNote[]>([]);
   const [userProfileImage, setUserProfileImage] = useState<string | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<PomodoroNote[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showCustomNoteModal, setShowCustomNoteModal] = useState(false);
   const [processingNoteId, setProcessingNoteId] = useState<string | null>(null);
@@ -142,6 +151,12 @@ const NotesContent: React.FC<NotesContentProps> = ({
         });
 
         console.log("✅ Notes loaded from Firestore:", notesData.length);
+        console.log("📋 All notes with subjectIds:", notesData.map(n => ({
+          id: n.id,
+          title: n.taskTitle,
+          subjectId: n.subjectId,
+          hasSubjectId: !!n.subjectId
+        })));
         setNotes(notesData);
         setFilteredNotes(notesData);
         setIsLoading(false);
@@ -155,18 +170,135 @@ const NotesContent: React.FC<NotesContentProps> = ({
     return () => unsubscribe();
   }, []);
 
+  // Auto-migrate notes without subjectId (one-time fix)
   useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredNotes(notes);
-    } else {
-      const filtered = notes.filter(
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const migrateNotesWithSubjectId = async () => {
+      try {
+        console.log('🔄 Checking for notes without subjectId...');
+        
+        // Get all notes without subjectId
+        const notesQuery = query(
+          collection(db, 'notes'),
+          where('userId', '==', user.uid)
+        );
+        const notesSnapshot = await getDocs(notesQuery);
+        
+        // Get all tasks to match by title
+        const tasksQuery = query(
+          collection(db, 'tasks'),
+          where('userId', '==', user.uid)
+        );
+        const tasksSnapshot = await getDocs(tasksQuery);
+        
+        // Create a map of task titles to subjectIds
+        const taskSubjectMap = new Map<string, string>();
+        tasksSnapshot.forEach((taskDoc) => {
+          const taskData = taskDoc.data();
+          if (taskData.title && taskData.subjectId) {
+            taskSubjectMap.set(taskData.title, taskData.subjectId);
+          }
+        });
+        
+        console.log(`📋 Found ${taskSubjectMap.size} tasks with subjects`);
+        
+        // Update notes that don't have subjectId
+        let updated = 0;
+        for (const noteDoc of notesSnapshot.docs) {
+          const noteData = noteDoc.data();
+          
+          // Skip if already has subjectId
+          if (noteData.subjectId) continue;
+          
+          // Try to find matching task
+          const matchingSubjectId = taskSubjectMap.get(noteData.taskTitle);
+          
+          if (matchingSubjectId) {
+            await updateDoc(doc(db, 'notes', noteDoc.id), {
+              subjectId: matchingSubjectId
+            });
+            console.log(`✅ Updated note "${noteData.taskTitle}" with subjectId: ${matchingSubjectId}`);
+            updated++;
+          }
+        }
+        
+        if (updated > 0) {
+          console.log(`🎉 Migration complete! Updated ${updated} notes with subjectIds`);
+        } else {
+          console.log('✅ All notes already have subjectIds or no matching tasks found');
+        }
+      } catch (error) {
+        console.error('❌ Migration error:', error);
+      }
+    };
+    
+    // Run migration once on mount
+    migrateNotesWithSubjectId();
+  }, []);
+
+  // Load subjects
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const subjectsQuery = query(
+      collection(db, 'subjects'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(subjectsQuery, (snapshot) => {
+      const loadedSubjects: Subject[] = [];
+      snapshot.forEach((doc) => {
+        loadedSubjects.push({ id: doc.id, ...doc.data() } as Subject);
+      });
+      const sorted = loadedSubjects.sort((a, b) => a.name.localeCompare(b.name));
+      console.log('📚 Loaded subjects:', sorted.map(s => ({ name: s.name, id: s.id, icon: s.icon })));
+      setSubjects(sorted);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Filter notes by search and subject
+  useEffect(() => {
+    let filtered = notes;
+
+    console.log('🔍 Filtering notes:', {
+      totalNotes: notes.length,
+      selectedSubjectId,
+      notesWithSubjects: notes.map(n => ({ 
+        title: n.taskTitle, 
+        subjectId: n.subjectId,
+        hasSubjectId: !!n.subjectId,
+        match: n.subjectId === selectedSubjectId
+      }))
+    });
+
+    // Filter by subject
+    if (selectedSubjectId) {
+      const beforeFilter = filtered.length;
+      filtered = filtered.filter(note => {
+        const matches = note.subjectId === selectedSubjectId;
+        console.log(`  Checking note "${note.taskTitle}": subjectId="${note.subjectId}" vs selected="${selectedSubjectId}" → ${matches ? '✅ MATCH' : '❌ NO MATCH'}`);
+        return matches;
+      });
+      console.log(`📚 Filtered by subject ${selectedSubjectId}: ${beforeFilter} → ${filtered.length} notes`);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim() !== "") {
+      filtered = filtered.filter(
         (note) =>
           note.taskTitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           note.notes?.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredNotes(filtered);
     }
-  }, [searchQuery, notes]);
+
+    setFilteredNotes(filtered);
+    console.log('✅ Final filtered notes:', filtered.length);
+  }, [searchQuery, notes, selectedSubjectId]);
 
   const handleDeleteNote = async (noteId: string) => {
     Alert.alert(
@@ -344,14 +476,25 @@ const NotesContent: React.FC<NotesContentProps> = ({
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
+      {/* Header with tabs integrated */}
+      <View style={styles.headerWithTabs}>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
           {!showSearch ? (
             <>
               <Text style={styles.title}>Notes</Text>
               <View
                 style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
               >
+                <TouchableOpacity onPress={onOpenAppearance}>
+                  <Ionicons name="color-palette-outline" size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onOpenTimeTable}>
+                  <Ionicons name="calendar-outline" size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onOpenSubjects}>
+                  <Ionicons name="folder-outline" size={24} color="#fff" />
+                </TouchableOpacity>
                 <TouchableOpacity onPress={onOpenProfile}>
                   {userProfileImage ? (
                     <Image
@@ -395,10 +538,76 @@ const NotesContent: React.FC<NotesContentProps> = ({
               </TouchableOpacity>
             </View>
           )}
+          </View>
         </View>
+
+        {/* Subject Filter Tabs - Now inside header */}
+        <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.subjectFilterContainer}
+        contentContainerStyle={styles.subjectFilterContent}
+      >
+        <TouchableOpacity
+          style={[
+            styles.subjectTab,
+            !selectedSubjectId && styles.subjectTabActive
+          ]}
+          onPress={() => setSelectedSubjectId(null)}
+        >
+          <Text style={[
+            styles.subjectTabText,
+            !selectedSubjectId && styles.subjectTabTextActive
+          ]}>
+            All
+          </Text>
+          {!selectedSubjectId && (
+            <View style={styles.activeIndicator} />
+          )}
+        </TouchableOpacity>
+
+        {subjects.map((subject) => (
+          <TouchableOpacity
+            key={subject.id}
+            style={[
+              styles.subjectTab,
+              selectedSubjectId === subject.id && styles.subjectTabActive
+            ]}
+            onPress={() => setSelectedSubjectId(subject.id)}
+          >
+            <Text style={styles.subjectTabIcon}>{subject.icon}</Text>
+            <Text style={[
+              styles.subjectTabText,
+              selectedSubjectId === subject.id && styles.subjectTabTextActive
+            ]}>
+              {subject.name}
+            </Text>
+            {selectedSubjectId === subject.id && (
+              <View style={[styles.activeIndicator, { backgroundColor: subject.color }]} />
+            )}
+          </TouchableOpacity>
+        ))}
+        </ScrollView>
       </View>
 
-      <ScrollView style={styles.scrollContainer}>
+      {/* Notes List */}
+      {filteredNotes.length === 0 && selectedSubjectId ? (
+        <View style={styles.emptyFilterState}>
+          <Text style={styles.emptyFilterIcon}>📭</Text>
+          <Text style={styles.emptyFilterTitle}>No Notes Found</Text>
+          <Text style={styles.emptyFilterText}>
+            No notes for this subject yet.{' \n'}
+            Complete a task with this subject to see notes here!
+          </Text>
+          <TouchableOpacity 
+            style={styles.clearFilterButton}
+            onPress={() => setSelectedSubjectId(null)}
+          >
+            <Text style={styles.clearFilterButtonText}>View All Notes</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView style={styles.scrollContainer}>
         {Object.entries(groupedNotes).map(([dateKey, dayNotes]) => (
           <View key={dateKey} style={styles.dateGroup}>
             <Text style={styles.dateHeader}>{dateKey}</Text>
@@ -463,7 +672,8 @@ const NotesContent: React.FC<NotesContentProps> = ({
             ))}
           </View>
         ))}
-      </ScrollView>
+        </ScrollView>
+      )}
 
       <TouchableOpacity
         style={styles.fab}
@@ -856,9 +1066,12 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
   },
+  headerWithTabs: {
+    backgroundColor: "transparent",
+  },
   header: {
     paddingHorizontal: 20,
-    paddingVertical: 22,
+    paddingVertical: 12,
     backgroundColor: "transparent",
   },
   headerContent: {
@@ -1198,6 +1411,89 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
+  },
+  subjectFilterContainer: {
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  subjectFilterContent: {
+    paddingHorizontal: 12,
+    gap: 6,
+    alignItems: 'center',
+  },
+  subjectTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    gap: 3,
+    height: 24,
+  },
+  subjectTabActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  subjectTabIcon: {
+    fontSize: 12,
+  },
+  subjectTabText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  subjectTabTextActive: {
+    color: '#FFF',
+    fontWeight: '700',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: '#FFF',
+    borderRadius: 1,
+  },
+  emptyFilterState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingTop: 60,
+  },
+  emptyFilterIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyFilterTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyFilterText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  clearFilterButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  clearFilterButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

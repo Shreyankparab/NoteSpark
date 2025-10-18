@@ -120,6 +120,7 @@ import ProfileModal from "../components/modals/ProfileModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import TaskInputModal from "../components/modals/TaskInputModal";
 import NotesModal from "../components/modals/NotesModal";
+import SubjectsScreen from "./SubjectsScreen";
 
 // Notes type
 interface Note {
@@ -280,6 +281,7 @@ export default function TimerScreen() {
   const [showTaskInputModal, setShowTaskInputModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showAppearanceModal, setShowAppearanceModal] = useState(false);
+  const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
   const [completionNotificationId, setCompletionNotificationId] = useState<string | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
@@ -291,6 +293,7 @@ export default function TimerScreen() {
     duration: number;
     completedAt: number;
     imageUrl?: string;
+    subjectId?: string;
   } | null>(null);
   const [isLogin, setIsLogin] = useState(true);
   const [streak, setStreak] = useState(0);
@@ -600,6 +603,13 @@ export default function TimerScreen() {
     const completedAt = Date.now();
     const taskTitle = currentTask?.title || "Pomodoro Session";
     const duration = initialTime / 60; // store as minutes
+    const taskSubjectId = currentTask?.subjectId; // Capture subjectId early
+    
+    console.log('🎯 Timer completed with task:', { 
+      taskTitle, 
+      subjectId: taskSubjectId,
+      hasCurrentTask: !!currentTask 
+    });
 
     // Do NOT upload anything yet. We will open the image modal and let the
     // user choose an image, then perform upload from there to avoid Blob issues.
@@ -696,7 +706,10 @@ export default function TimerScreen() {
       taskTitle,
       duration,
       completedAt,
+      subjectId: taskSubjectId,
     });
+    
+    console.log('💾 Saved completed session with subjectId:', taskSubjectId);
 
     // Show image modal first
     setShowImageModal(true);
@@ -986,7 +999,7 @@ export default function TimerScreen() {
     }
   };
 
-  const handleTaskSave = async (taskTitle: string) => {
+  const handleTaskSave = async (taskTitle: string, subjectId?: string) => {
     setShowTaskInputModal(false);
 
     if (!taskTitle) {
@@ -1001,13 +1014,18 @@ export default function TimerScreen() {
     if (!user) return;
 
     // Create new task in Firestore
-    const newTask: Omit<Task, "id"> = {
+    const newTask: any = {
       title: taskTitle,
       duration: initialTime / 60,
       createdAt: Date.now(),
       status: "pending", // Start as pending, will become active when timer starts
       userId: user.uid,
     };
+
+    // Only add subjectId if it exists (Firebase doesn't accept undefined)
+    if (subjectId) {
+      newTask.subjectId = subjectId;
+    }
 
     try {
       const tasksRef = collection(db, "tasks");
@@ -1164,6 +1182,9 @@ export default function TimerScreen() {
           <NotesContent
             onOpenProfile={() => setShowProfileModal(true)}
             onOpenSettings={() => setShowSettingsModal(true)}
+            onOpenAppearance={() => setShowAppearanceModal(true)}
+            onOpenTimeTable={() => setShowTimeTableModal(true)}
+            onOpenSubjects={() => setShowSubjectsModal(true)}
           />
         );
       case "Flashcards":
@@ -1252,6 +1273,12 @@ export default function TimerScreen() {
                 size={28}
                 color="white"
               />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowSubjectsModal(true)}
+              style={{ marginRight: 16 }}
+            >
+              <Ionicons name="folder-outline" size={24} color="white" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowProfileModal(true)}
@@ -1441,6 +1468,41 @@ export default function TimerScreen() {
         )}
         totalTasksCompleted={tasks.filter(t => t.status === "completed").length}
       />
+
+      {/* Subjects Modal */}
+      <Modal
+        visible={showSubjectsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View style={{ flex: 1 }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: 16,
+            paddingTop: 50,
+            backgroundColor: '#FFF',
+            borderBottomWidth: 1,
+            borderBottomColor: '#E2E8F0',
+          }}>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: '#1E293B' }}>
+              Subjects
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowSubjectsModal(false)}
+              style={{
+                backgroundColor: '#F1F5F9',
+                padding: 8,
+                borderRadius: 20,
+              }}
+            >
+              <Ionicons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+          <SubjectsScreen />
+        </View>
+      </Modal>
       
       <TimeTableModal
         visible={showTimeTableModal}
@@ -1468,6 +1530,7 @@ export default function TimerScreen() {
         duration={completedSession?.duration || 0}
         completedAt={completedSession?.completedAt || Date.now()}
         imageUrl={completedSession?.imageUrl}
+        subjectId={completedSession?.subjectId}
       />
 
       <ImageCaptureModal

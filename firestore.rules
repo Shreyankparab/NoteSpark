@@ -41,5 +41,15 @@ service cloud.firestore {
     match /achievement_definitions/{definitionId} {
       allow read: if request.auth != null;
     }
+    
+    // Users can read and write their own subjects
+    match /subjects/{subjectId} {
+      allow read: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && 
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+    }
   }
 }
