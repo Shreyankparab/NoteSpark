@@ -28,6 +28,8 @@ interface TaskInputModalProps {
   onToggleVibration: (value: boolean) => void;
   onSelectSound: (sound: SoundPreset) => void;
   soundPresets: SoundPreset[];
+  isFlipDeviceOn?: boolean;
+  onToggleFlipDevice?: (value: boolean) => void;
 }
 
 const TaskInputModal: React.FC<TaskInputModalProps> = ({
@@ -41,6 +43,8 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
   onToggleVibration,
   onSelectSound,
   soundPresets,
+  isFlipDeviceOn = false,
+  onToggleFlipDevice,
 }) => {
   const [taskTitle, setTaskTitle] = useState("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -126,11 +130,11 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
   return (
     <Modal
       visible={visible}
-      transparent
-      animationType="fade"
+      animationType="slide"
+      presentationStyle="fullScreen"
       onRequestClose={handleSkip}
     >
-      <View style={styles.profileModalOverlay}>
+      <View style={styles.fullScreenContainer}>
         <View style={styles.taskInputModalContainer}>
           {/* Gradient Header */}
           <LinearGradient
@@ -330,6 +334,39 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                 </View>
               </TouchableOpacity>
 
+              {/* Flip Device Toggle */}
+              {onToggleFlipDevice && (
+                <TouchableOpacity
+                  style={styles.settingRow}
+                  onPress={() => onToggleFlipDevice(!isFlipDeviceOn)}
+                >
+                  <View style={styles.settingLeft}>
+                    <Ionicons
+                      name={isFlipDeviceOn ? "phone-landscape" : "phone-landscape-outline"}
+                      size={22}
+                      color="#4F46E5"
+                    />
+                    <View>
+                      <Text style={styles.settingLabel}>Flip Device Mode</Text>
+                      <Text style={styles.settingDescription}>Flip phone face down to focus</Text>
+                    </View>
+                  </View>
+                  <View
+                    style={[
+                      styles.toggle,
+                      isFlipDeviceOn ? styles.toggleActive : styles.toggleInactive,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.toggleThumb,
+                        isFlipDeviceOn ? styles.toggleThumbActive : styles.toggleThumbInactive,
+                      ]}
+                    />
+                  </View>
+                </TouchableOpacity>
+              )}
+
               {/* Sound Selection */}
               {isSoundOn && (
                 <View style={styles.soundSelection}>
@@ -496,6 +533,10 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
 };
 
 const styles = StyleSheet.create({
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
   profileModalOverlay: {
     flex: 1,
     justifyContent: "center",
@@ -503,19 +544,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
   },
   taskInputModalContainer: {
-    width: "92%",
-    height: "85%",
+    flex: 1,
     backgroundColor: "#F8FAFC",
-    borderRadius: 24,
     overflow: 'hidden',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
   },
   gradientHeader: {
-    paddingTop: 20,
+    paddingTop: 50,
     paddingBottom: 24,
     paddingHorizontal: 24,
   },
@@ -667,6 +701,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#333",
     fontWeight: "500",
+  },
+  settingDescription: {
+    fontSize: 12,
+    color: "#94A3B8",
+    fontWeight: "400",
+    marginTop: 2,
   },
   toggle: {
     width: 50,

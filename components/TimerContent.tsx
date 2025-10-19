@@ -17,6 +17,7 @@ interface TimerContentProps {
   progressPercentage: number;
   currentTask: Task | null;
   onEditTask: () => void;
+  onAbandonTask: () => void;
   onAddOneMinute: () => void;
   theme: Theme;
 }
@@ -31,6 +32,7 @@ const TimerContent: React.FC<TimerContentProps> = ({
   progressPercentage,
   currentTask,
   onEditTask,
+  onAbandonTask,
   onAddOneMinute,
   theme,
 }) => {
@@ -67,9 +69,22 @@ const TimerContent: React.FC<TimerContentProps> = ({
               styles.currentTaskLabel,
               { color: theme.secondaryTextColor }
             ]}>Current Task:</Text>
-            <TouchableOpacity onPress={onEditTask}>
-              <Ionicons name="create-outline" size={18} color={theme.textColor} />
-            </TouchableOpacity>
+            <View style={styles.taskActions}>
+              <TouchableOpacity 
+                onPress={onAbandonTask}
+                style={styles.actionButton}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="close-circle-outline" size={20} color={theme.secondaryTextColor || "rgba(255,255,255,0.6)"} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={onEditTask}
+                style={styles.actionButton}
+                activeOpacity={0.6}
+              >
+                <Ionicons name="create-outline" size={20} color={theme.textColor} />
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={[
             styles.currentTaskTitle,
@@ -179,9 +194,17 @@ const styles = StyleSheet.create({
   currentTaskContainer: {
     backgroundColor: "rgba(255,255,255,0.2)",
     borderRadius: 12,
-    padding: 12,
+    padding: 16,
     marginBottom: 20,
     width: "90%",
+  },
+  taskActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  actionButton: {
+    padding: 4,
   },
   timerContainer: {
     width: TIMER_SIZE,

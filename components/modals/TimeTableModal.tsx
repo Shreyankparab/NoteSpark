@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, TextInput,
-  ScrollView, KeyboardAvoidingView, Platform
+  ScrollView, KeyboardAvoidingView, Platform, Animated
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Define the TimeTable entry type
 interface TimeTableEntry {
@@ -28,6 +29,8 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
   const [newTitle, setNewTitle] = useState('');
   const [newDuration, setNewDuration] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(50))[0];
   
   // Check if selected date is in the past
   const isPastDate = () => {
@@ -41,7 +44,26 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
   // Load timetable entries from storage
   useEffect(() => {
     if (visible) {
+      console.log('📅 TimeTable Modal opened');
       loadEntries();
+      // Animate in
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Reset animation
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
     }
   }, [visible, selectedDate]);
 
@@ -125,6 +147,19 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
     setSelectedDate(date.toISOString().split('T')[0]);
   };
 
+  // Calculate statistics
+  const totalHours = entries.reduce((sum, entry) => sum + entry.duration, 0);
+  const completedHours = entries.filter(e => e.completed).reduce((sum, entry) => sum + entry.duration, 0);
+  const completionPercentage = entries.length > 0 ? (entries.filter(e => e.completed).length / entries.length) * 100 : 0;
+  
+  const isToday = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(selectedDate);
+    selected.setHours(0, 0, 0, 0);
+    return selected.getTime() === today.getTime();
+  };
+
   return (
     <Modal
       animationType="fade"
@@ -133,62 +168,145 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+        <Animated.View 
+          style={[
+            styles.modalContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            }
+          ]}
+        >
+          <LinearGradient
+            colors={['#ffffff', '#f0f4ff', '#e8f0fe']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.gradientContainer}
+          >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
           >
+            {/* Header with close button */}
             <View style={styles.modalHeader}>
+              <View style={styles.headerContent}>
+                <View style={styles.headerIcon}>
+                  <Ionicons name="calendar" size={28} color="#667eea" />
+                </View>
+                <View>
+                  <Text style={styles.modalTitle}>My Timetable</Text>
+                  <Text style={styles.modalSubtitle}>Plan your productive day</Text>
+                </View>
+              </View>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color="#fff" />
+                <Ionicons name="close-circle" size={32} color="#64748b" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Timetable</Text>
-              <View style={{ width: 24 }} />
             </View>
             
+            {/* Date Selector with Status Badge */}
             <View style={styles.dateSelector}>
               <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateArrow}>
-                <Ionicons name="chevron-back" size={24} color="#fff" />
+                <Ionicons name="chevron-back-circle" size={36} color="#667eea" />
               </TouchableOpacity>
               <View style={styles.dateTextContainer}>
                 <Text style={styles.dateText}>
                   {new Date(selectedDate).toLocaleDateString('en-US', { 
-                    weekday: 'short', 
-                    month: 'short', 
+                    weekday: 'long', 
+                    month: 'long', 
                     day: 'numeric' 
                   })}
                 </Text>
-                {isPastDate() && (
-                  <Text style={styles.pastDateIndicator}>(Past)</Text>
-                )}
+                <View style={styles.dateBadge}>
+                  {isToday() ? (
+                    <View style={[styles.statusBadge, { backgroundColor: '#4cd964' }]}>
+                      <Ionicons name="today" size={12} color="#fff" />
+                      <Text style={styles.badgeText}>Today</Text>
+                    </View>
+                  ) : isPastDate() ? (
+                    <View style={[styles.statusBadge, { backgroundColor: '#ff6b6b' }]}>
+                      <Ionicons name="time" size={12} color="#fff" />
+                      <Text style={styles.badgeText}>Past</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.statusBadge, { backgroundColor: '#5ac8fa' }]}>
+                      <Ionicons name="calendar-outline" size={12} color="#fff" />
+                      <Text style={styles.badgeText}>Upcoming</Text>
+                    </View>
+                  )}
+                </View>
               </View>
               <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateArrow}>
-                <Ionicons name="chevron-forward" size={24} color="#fff" />
+                <Ionicons name="chevron-forward-circle" size={36} color="#667eea" />
               </TouchableOpacity>
             </View>
             
-            <ScrollView style={styles.entriesContainer}>
+            {/* Statistics Card */}
+            {entries.length > 0 && (
+              <View style={styles.statsCard}>
+                <View style={styles.statItem}>
+                  <Ionicons name="list" size={20} color="#667eea" />
+                  <Text style={styles.statValue}>{entries.length}</Text>
+                  <Text style={styles.statLabel}>Tasks</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Ionicons name="time" size={20} color="#f59e0b" />
+                  <Text style={styles.statValue}>{totalHours.toFixed(1)}h</Text>
+                  <Text style={styles.statLabel}>Total</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statItem}>
+                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                  <Text style={styles.statValue}>{completionPercentage.toFixed(0)}%</Text>
+                  <Text style={styles.statLabel}>Done</Text>
+                </View>
+              </View>
+            )}
+            
+            {/* Tasks List */}
+            <ScrollView 
+              style={styles.entriesContainer}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {entries.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Ionicons name="calendar-outline" size={64} color="rgba(255,255,255,0.5)" />
-                  <Text style={styles.emptyStateText}>No tasks scheduled for this day</Text>
-                  <Text style={styles.emptyStateSubtext}>Add a task below to get started</Text>
+                  <View style={styles.emptyIconContainer}>
+                    <Ionicons name="calendar-outline" size={80} color="#cbd5e1" />
+                  </View>
+                  <Text style={styles.emptyStateText}>No tasks scheduled</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    {isPastDate() 
+                      ? "This day has passed" 
+                      : "Start planning your day by adding tasks below"}
+                  </Text>
                 </View>
               ) : (
-                entries.map(entry => (
-                  <View key={entry.id} style={styles.entryItem}>
-                    <View style={styles.entryContent}>
+                entries.map((entry, index) => (
+                  <Animated.View 
+                    key={entry.id} 
+                    style={[
+                      styles.entryItem,
+                      entry.completed && styles.entryItemCompleted
+                    ]}
+                  >
+                    <View style={styles.entryHeader}>
                       <TouchableOpacity 
                         onPress={() => toggleComplete(entry.id)}
-                        style={[
+                        style={styles.checkboxContainer}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[
                           styles.checkbox,
                           entry.completed && styles.checkboxChecked
-                        ]}
-                      >
-                        {entry.completed && (
-                          <Ionicons name="checkmark" size={16} color="#fff" />
-                        )}
+                        ]}>
+                          {entry.completed && (
+                            <Ionicons name="checkmark" size={18} color="#fff" />
+                          )}
+                        </View>
                       </TouchableOpacity>
+                      
                       <View style={styles.entryTextContainer}>
                         <Text 
                           style={[
@@ -198,18 +316,38 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
                         >
                           {entry.title}
                         </Text>
-                        <Text style={styles.entryDuration}>
-                          {entry.duration} {entry.duration === 1 ? 'hour' : 'hours'}
-                        </Text>
+                        <View style={styles.entryMeta}>
+                          <View style={styles.durationBadge}>
+                            <Ionicons name="time-outline" size={14} color="#667eea" />
+                            <Text style={styles.entryDuration}>
+                              {entry.duration} {entry.duration === 1 ? 'hr' : 'hrs'}
+                            </Text>
+                          </View>
+                          {entry.completed && (
+                            <View style={styles.completedBadge}>
+                              <Ionicons name="checkmark-circle" size={14} color="#10b981" />
+                              <Text style={styles.completedText}>Completed</Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
+                      
                       <TouchableOpacity 
                         onPress={() => deleteEntry(entry.id)}
                         style={styles.deleteButton}
+                        activeOpacity={0.7}
                       >
-                        <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
+                        <Ionicons name="trash" size={22} color="#ff6b6b" />
                       </TouchableOpacity>
                     </View>
-                  </View>
+                    
+                    {/* Progress indicator for incomplete tasks */}
+                    {!entry.completed && (
+                      <View style={styles.progressIndicator}>
+                        <View style={styles.progressBar} />
+                      </View>
+                    )}
+                  </Animated.View>
                 ))
               )}
             </ScrollView>
@@ -219,14 +357,14 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
                 <TextInput
                   style={styles.input}
                   placeholder="Task name"
-                  placeholderTextColor="rgba(255,255,255,0.5)"
+                  placeholderTextColor="#94a3b8"
                   value={newTitle}
                   onChangeText={setNewTitle}
                 />
                 <TextInput
                   style={[styles.input, styles.durationInput]}
                   placeholder="Hours"
-                  placeholderTextColor="rgba(255,255,255,0.5)"
+                  placeholderTextColor="#94a3b8"
                   keyboardType="numeric"
                   value={newDuration}
                   onChangeText={setNewDuration}
@@ -244,7 +382,8 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
               </View>
             )}
           </KeyboardAvoidingView>
-        </View>
+          </LinearGradient>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -253,7 +392,7 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -279,137 +418,293 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   modalContainer: {
-    width: '90%',
-    height: '80%',
-    backgroundColor: '#546bab',
-    borderRadius: 20,
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+  },
+  gradientContainer: {
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#475a96',
+    padding: 20,
+    paddingTop: 24,
+    backgroundColor: 'rgba(102, 126, 234, 0.05)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f0f4ff',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeButton: {
     padding: 4,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1e293b',
+    letterSpacing: 0.5,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 2,
   },
   dateSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    backgroundColor: '#5d74b3',
+    justifyContent: 'space-between',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    backgroundColor: '#fafbff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
   dateArrow: {
-    padding: 8,
+    padding: 4,
   },
   dateText: {
-    fontSize: 18,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  dateBadge: {
+    marginTop: 6,
+    alignItems: 'center',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  badgeText: {
+    fontSize: 11,
     fontWeight: '600',
     color: '#fff',
+  },
+  statsCard: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
     marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 8,
   },
   entriesContainer: {
     flex: 1,
+  },
+  scrollContent: {
     padding: 16,
+    paddingBottom: 8,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 80,
+    paddingHorizontal: 40,
+  },
+  emptyIconContainer: {
+    marginBottom: 20,
+    opacity: 0.5,
   },
   emptyStateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 16,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   emptyStateSubtext: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 8,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   entryItem: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
     marginBottom: 12,
     overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  entryContent: {
+  entryItemCompleted: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#86efac',
+  },
+  entryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+  checkboxContainer: {
     marginRight: 12,
   },
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2.5,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+  },
   checkboxChecked: {
-    backgroundColor: '#4cd964',
-    borderColor: '#4cd964',
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
   },
   entryTextContainer: {
     flex: 1,
   },
   entryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 4,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 8,
+    letterSpacing: 0.2,
   },
   entryTitleCompleted: {
     textDecorationLine: 'line-through',
-    color: 'rgba(255,255,255,0.6)',
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  entryMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  durationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f0f4ff',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   entryDuration: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    color: '#667eea',
+    fontWeight: '600',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  completedText: {
+    fontSize: 11,
+    color: '#10b981',
+    fontWeight: '700',
   },
   deleteButton: {
     padding: 8,
+    marginLeft: 8,
+  },
+  progressIndicator: {
+    height: 3,
+    backgroundColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    width: '30%',
+    backgroundColor: '#667eea',
   },
   addEntryContainer: {
     flexDirection: 'row',
     padding: 16,
-    backgroundColor: '#475a96',
+    paddingBottom: Platform.OS === 'android' ? 16 : 20,
+    backgroundColor: '#fafbff',
     alignItems: 'center',
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
   },
   input: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
-    padding: 12,
-    color: '#fff',
-    marginRight: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 14,
+    color: '#1e293b',
+    fontSize: 15,
+    fontWeight: '500',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
   },
   durationInput: {
-    flex: 0.3,
+    flex: 0.35,
   },
   addButton: {
-    backgroundColor: '#5d74b3',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    backgroundColor: '#667eea',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#667eea',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
 });
 

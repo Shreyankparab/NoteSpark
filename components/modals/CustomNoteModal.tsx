@@ -14,9 +14,10 @@ import {
   Keyboard,
   ActivityIndicator,
 } from "react-native";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "../../firebase/firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
+import { Subject } from "../../types";
 
 interface CustomNoteModalProps {
   visible: boolean;
@@ -35,6 +36,8 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const voiceRef = useRef<any>(null);
 
   useEffect(() => {
@@ -62,8 +65,30 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
   React.useEffect(() => {
     if (visible) {
       setImageUrl(initialImageUrl);
+      loadSubjects();
     }
   }, [visible, initialImageUrl]);
+
+  // Load subjects
+  const loadSubjects = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      const subjectsQuery = query(
+        collection(db, 'subjects'),
+        where('userId', '==', user.uid)
+      );
+      const snapshot = await getDocs(subjectsQuery);
+      const loadedSubjects: Subject[] = [];
+      snapshot.forEach(doc => {
+        loadedSubjects.push({ id: doc.id, ...doc.data() } as Subject);
+      });
+      setSubjects(loadedSubjects);
+    } catch (error) {
+      console.error('Error loading subjects:', error);
+    }
+  };
 
   const startListening = async () => {
     try {
@@ -144,7 +169,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
     
     setIsSaving(true);
     try {
-      await addDoc(collection(db, "notes"), {
+      const noteData: any = {
         taskTitle: title.trim() || "Custom Note",
         duration: 0,
         notes: content.trim(),
@@ -152,10 +177,18 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
         userId: user.uid,
         createdAt: serverTimestamp(),
         imageUrl: imageUrl || "",
-      });
+      };
+
+      // Add subjectId if selected
+      if (selectedSubjectId) {
+        noteData.subjectId = selectedSubjectId;
+      }
+
+      await addDoc(collection(db, "notes"), noteData);
       setTitle("");
       setContent("");
       setImageUrl(undefined);
+      setSelectedSubjectId(null);
       Alert.alert("Success", "Note saved successfully!");
       onClose();
     } catch (e) {
@@ -214,6 +247,52 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
                   editable={!isSaving}
                 />
               </View>
+
+              {/* Subject Selector */}
+              {subjects.length > 0 && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Subject (Optional)</Text>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.subjectScroll}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.subjectChip,
+                        !selectedSubjectId && styles.subjectChipSelected
+                      ]}
+                      onPress={() => setSelectedSubjectId(null)}
+                    >
+                      <Text style={[
+                        styles.subjectChipText,
+                        !selectedSubjectId && styles.subjectChipTextSelected
+                      ]}>
+                        None
+                      </Text>
+                    </TouchableOpacity>
+                    {subjects.map((subject) => (
+                      <TouchableOpacity
+                        key={subject.id}
+                        style={[
+                          styles.subjectChip,
+                          selectedSubjectId === subject.id && styles.subjectChipSelected,
+                          { borderColor: subject.color || '#6366F1' }
+                        ]}
+                        onPress={() => setSelectedSubjectId(subject.id)}
+                      >
+                        <Text style={styles.subjectChipIcon}>{subject.icon}</Text>
+                        <Text style={[
+                          styles.subjectChipText,
+                          selectedSubjectId === subject.id && styles.subjectChipTextSelected
+                        ]}>
+                          {subject.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
               
               <View style={styles.inputGroup}>
                 <View style={styles.editorHeader}>
@@ -284,8 +363,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   container: {
-    width: "92%",
-    maxHeight: "90%",
+    width: "94%",
+    height: "85%",
     backgroundColor: "white",
     borderRadius: 20,
     overflow: "hidden",
@@ -351,6 +430,36 @@ const styles = StyleSheet.create({
     height: 160, 
     textAlignVertical: "top",
     minHeight: 160,
+  },
+  subjectScroll: {
+    marginTop: 8,
+  },
+  subjectChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+    marginRight: 8,
+    gap: 6,
+  },
+  subjectChipSelected: {
+    backgroundColor: "#6366F1",
+    borderColor: "#6366F1",
+  },
+  subjectChipIcon: {
+    fontSize: 14,
+  },
+  subjectChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6b7280",
+  },
+  subjectChipTextSelected: {
+    color: "#FFF",
   },
   editorHeader: {
     flexDirection: "row",

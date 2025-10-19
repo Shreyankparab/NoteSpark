@@ -18,7 +18,8 @@ export interface Task {
   duration: number; // in minutes
   createdAt: number;
   completedAt?: number;
-  status: "active" | "completed" | "pending";
+  abandonedAt?: number;
+  status: "active" | "completed" | "pending" | "abandoned";
   userId: string;
   subjectId?: string; // optional subject assignment
 }

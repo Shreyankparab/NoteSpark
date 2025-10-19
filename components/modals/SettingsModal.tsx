@@ -7,7 +7,9 @@ import {
   TextInput, 
   Alert,
   ScrollView,
-  StyleSheet 
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SoundPreset } from "../../types";
@@ -107,7 +109,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.profileModalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.profileModalOverlay}
+      >
         <View style={styles.settingsModalContainer}>
           <View style={styles.profileModalHeader}>
             <Text style={styles.profileModalTitle}>Timer Settings</Text>
@@ -116,19 +121,24 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.settingsLabel}>
-            Pomodoro Duration (1 - 60 minutes)
-          </Text>
-          <TextInput
-            style={styles.settingsInput}
-            value={minutesInput}
-            onChangeText={(text) =>
-              setMinutesInput(text.replace(/[^0-9]/g, ""))
-            }
-            keyboardType="number-pad"
-            placeholder="e.g., 25"
-            maxLength={2}
-          />
+          <ScrollView 
+            style={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.settingsLabel}>
+              Pomodoro Duration (1 - 60 minutes)
+            </Text>
+            <TextInput
+              style={styles.settingsInput}
+              value={minutesInput}
+              onChangeText={(text) =>
+                setMinutesInput(text.replace(/[^0-9]/g, ""))
+              }
+              keyboardType="number-pad"
+              placeholder="e.g., 25"
+              maxLength={2}
+            />
 
           <View style={styles.toggleRow}>
             <Text style={styles.toggleLabel}>Turn on sound when time's up</Text>
@@ -247,8 +257,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <Text style={styles.logoutButtonText}>Save & Apply</Text>
           </TouchableOpacity>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -281,11 +292,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontStyle: "italic",
   },
+  scrollContent: {
+    maxHeight: 400,
+  },
   settingsModalContainer: {
-    width: "85%",
+    width: "90%",
+    maxHeight: "75%",
     backgroundColor: "white",
-    borderRadius: 15,
-    padding: 20,
+    borderRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
   },
   profileModalHeader: {
     flexDirection: "row",

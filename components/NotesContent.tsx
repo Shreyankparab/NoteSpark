@@ -38,6 +38,7 @@ import CustomNoteModal from "./modals/CustomNoteModal";
 import { aiService } from "../utils/aiService";
 import { uploadToCloudinaryBase64 } from "../utils/imageStorage";
 import { Ionicons } from "@expo/vector-icons";
+import { Theme } from "../constants/themes";
 
 interface NotesContentProps {
   onOpenProfile?: () => void;
@@ -45,6 +46,7 @@ interface NotesContentProps {
   onOpenAppearance?: () => void;
   onOpenTimeTable?: () => void;
   onOpenSubjects?: () => void;
+  theme?: Theme;
 }
 
 const NotesContent: React.FC<NotesContentProps> = ({
@@ -53,6 +55,7 @@ const NotesContent: React.FC<NotesContentProps> = ({
   onOpenAppearance,
   onOpenTimeTable,
   onOpenSubjects,
+  theme,
 }) => {
   const [notes, setNotes] = useState<PomodoroNote[]>([]);
   const [userProfileImage, setUserProfileImage] = useState<string | null>(null);
@@ -612,7 +615,13 @@ const NotesContent: React.FC<NotesContentProps> = ({
           <View key={dateKey} style={styles.dateGroup}>
             <Text style={styles.dateHeader}>{dateKey}</Text>
 
-            {dayNotes.map((note) => (
+            {dayNotes.map((note) => {
+              // Find subject for this note
+              const noteSubject = note.subjectId 
+                ? subjects.find(s => s.id === note.subjectId)
+                : null;
+
+              return (
               <TouchableOpacity
                 key={note.id}
                 style={styles.noteCard}
@@ -627,9 +636,17 @@ const NotesContent: React.FC<NotesContentProps> = ({
               >
                 <View style={styles.cardRow}>
                   <View style={styles.cardLeft}>
-                    <Text style={styles.timestamp}>
-                      {formatTime(note.completedAt)}
-                    </Text>
+                    <View style={styles.timestampRow}>
+                      <Text style={styles.timestamp}>
+                        {formatTime(note.completedAt)}
+                      </Text>
+                      {noteSubject && (
+                        <View style={[styles.subjectBadge, { backgroundColor: noteSubject.color || '#6366F1' }]}>
+                          <Text style={styles.subjectBadgeIcon}>{noteSubject.icon}</Text>
+                          <Text style={styles.subjectBadgeText}>{noteSubject.name}</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.taskTitle} numberOfLines={2}>
                       {note.taskTitle || "Untitled"}
                     </Text>
@@ -669,14 +686,18 @@ const NotesContent: React.FC<NotesContentProps> = ({
                   <Ionicons name="trash-outline" size={18} color="#ef4444" />
                 </TouchableOpacity>
               </TouchableOpacity>
-            ))}
+            );
+            })}
           </View>
         ))}
         </ScrollView>
       )}
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[
+          styles.fab,
+          { backgroundColor: theme?.accentColor || "#9333ea" }
+        ]}
         onPress={() => setShowCreateOptions(true)}
       >
         <Ionicons name="add" size={30} color="white" />
@@ -692,120 +713,136 @@ const NotesContent: React.FC<NotesContentProps> = ({
       <Modal
         transparent
         visible={showCreateOptions}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowCreateOptions(false)}
       >
         <View style={styles.optionsOverlay}>
+          <TouchableOpacity 
+            style={styles.optionsOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => setShowCreateOptions(false)}
+          />
           <View style={styles.optionsCard}>
-            <Text style={styles.optionsTitle}>Create Note</Text>
-            <TouchableOpacity
-              style={styles.optionItem}
-              onPress={() => {
-                setShowCreateOptions(false);
-                setNewNoteImageUrl(undefined);
-                setShowCustomNoteModal(true);
-              }}
-            >
-              <Ionicons
-                name="document-text-outline"
-                size={20}
-                color="#111827"
-              />
-              <Text style={styles.optionText}>Text only</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.optionItem}
-              onPress={async () => {
-                try {
-                  setIsUploading(true);
-                  const { status } =
-                    await ImagePicker.requestMediaLibraryPermissionsAsync();
-                  if (status !== "granted") {
-                    Alert.alert("Permission", "Allow photo library access.");
-                    return;
+            <View style={styles.optionsHandle} />
+            <Text style={styles.optionsTitle}>✨ Create New Note</Text>
+            <Text style={styles.optionsSubtitle}>Choose how you'd like to create your note</Text>
+            
+            <View style={styles.optionsGrid}>
+              <TouchableOpacity
+                style={styles.optionCard}
+                onPress={() => {
+                  setShowCreateOptions(false);
+                  setNewNoteImageUrl(undefined);
+                  setShowCustomNoteModal(true);
+                }}
+              >
+                <View style={[styles.optionIconContainer, { backgroundColor: '#EEF2FF' }]}>
+                  <Ionicons
+                    name="document-text"
+                    size={28}
+                    color="#6366F1"
+                  />
+                </View>
+                <Text style={styles.optionCardTitle}>Text Only</Text>
+                <Text style={styles.optionCardDesc}>Create a simple text note</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.optionCard}
+                onPress={async () => {
+                  try {
+                    setIsUploading(true);
+                    const { status } =
+                      await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    if (status !== "granted") {
+                      Alert.alert("Permission", "Allow photo library access.");
+                      return;
+                    }
+                    const result = await ImagePicker.launchImageLibraryAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      base64: true,
+                      quality: 0.85,
+                    });
+                    if (!result.canceled) {
+                      const asset: any = result.assets[0];
+                      const url = await uploadToCloudinaryBase64(
+                        asset.base64,
+                        asset.mimeType || "image/jpeg",
+                        {
+                          folder: auth.currentUser
+                            ? `notespark/${auth.currentUser.uid}`
+                            : "notespark",
+                        }
+                      );
+                      setNewNoteImageUrl(url);
+                      setShowCreateOptions(false);
+                      setShowCustomNoteModal(true);
+                    }
+                  } catch (e) {
+                    Alert.alert("Image", "Failed to pick image.");
+                  } finally {
+                    setIsUploading(false);
                   }
-                  const result = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                    base64: true,
-                    quality: 0.85,
-                  });
-                  if (!result.canceled) {
-                    const asset: any = result.assets[0];
-                    const url = await uploadToCloudinaryBase64(
-                      asset.base64,
-                      asset.mimeType || "image/jpeg",
-                      {
-                        folder: auth.currentUser
-                          ? `notespark/${auth.currentUser.uid}`
-                          : "notespark",
-                      }
-                    );
-                    setNewNoteImageUrl(url);
-                    setShowCreateOptions(false);
-                    setShowCustomNoteModal(true);
+                }}
+              >
+                <View style={[styles.optionIconContainer, { backgroundColor: '#DBEAFE' }]}>
+                  <Ionicons name="images" size={28} color="#3B82F6" />
+                </View>
+                <Text style={styles.optionCardTitle}>Choose Image</Text>
+                <Text style={styles.optionCardDesc}>Add image from gallery</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.optionCard}
+                onPress={async () => {
+                  try {
+                    setIsUploading(true);
+                    const { status } =
+                      await ImagePicker.requestCameraPermissionsAsync();
+                    if (status !== "granted") {
+                      Alert.alert("Permission", "Allow camera access.");
+                      return;
+                    }
+                    const result = await ImagePicker.launchCameraAsync({
+                      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                      base64: true,
+                      quality: 0.85,
+                    });
+                    if (!result.canceled) {
+                      const asset: any = result.assets[0];
+                      const url = await uploadToCloudinaryBase64(
+                        asset.base64,
+                        asset.mimeType || "image/jpeg",
+                        {
+                          folder: auth.currentUser
+                            ? `notespark/${auth.currentUser.uid}`
+                            : "notespark",
+                        }
+                      );
+                      setNewNoteImageUrl(url);
+                      setShowCreateOptions(false);
+                      setShowCustomNoteModal(true);
+                    }
+                  } catch (e) {
+                    Alert.alert("Camera", "Failed to capture image.");
+                  } finally {
+                    setIsUploading(false);
                   }
-                } catch (e) {
-                  Alert.alert("Image", "Failed to pick image.");
-                } finally {
-                  setIsUploading(false);
-                }
-              }}
-            >
-              <Ionicons name="images-outline" size={20} color="#111827" />
-              <Text style={styles.optionText}>
-                Choose image (Notes Included)
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.optionItem}
-              onPress={async () => {
-                try {
-                  setIsUploading(true);
-                  const { status } =
-                    await ImagePicker.requestCameraPermissionsAsync();
-                  if (status !== "granted") {
-                    Alert.alert("Permission", "Allow camera access.");
-                    return;
-                  }
-                  const result = await ImagePicker.launchCameraAsync({
-                    base64: true,
-                    quality: 0.85,
-                  });
-                  if (!result.canceled) {
-                    const asset: any = result.assets[0];
-                    const url = await uploadToCloudinaryBase64(
-                      asset.base64,
-                      asset.mimeType || "image/jpeg",
-                      {
-                        folder: auth.currentUser
-                          ? `notespark/${auth.currentUser.uid}`
-                          : "notespark",
-                      }
-                    );
-                    setNewNoteImageUrl(url);
-                    setShowCreateOptions(false);
-                    setShowCustomNoteModal(true);
-                  }
-                } catch (e) {
-                  Alert.alert("Camera", "Failed to capture image.");
-                } finally {
-                  setIsUploading(false);
-                }
-              }}
-            >
-              <Ionicons name="camera-outline" size={20} color="#111827" />
-              <Text style={styles.optionText}>
-                Capture image (Notes Included)
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.optionsClose}
-              onPress={() => setShowCreateOptions(false)}
-            >
-              <Text style={styles.optionsCloseText}>
-                {isUploading ? "Please wait..." : "Cancel"}
-              </Text>
-            </TouchableOpacity>
+                }}
+              >
+                <View style={[styles.optionIconContainer, { backgroundColor: '#DCFCE7' }]}>
+                  <Ionicons name="camera" size={28} color="#10B981" />
+                </View>
+                <Text style={styles.optionCardTitle}>Capture Image</Text>
+                <Text style={styles.optionCardDesc}>Take a photo with camera</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isUploading && (
+              <View style={styles.uploadingIndicator}>
+                <ActivityIndicator size="small" color="#6366F1" />
+                <Text style={styles.uploadingText}>Processing...</Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1162,10 +1199,31 @@ const styles = StyleSheet.create({
   noteActions: {
     alignItems: "flex-end",
   },
+  timestampRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
   timestamp: {
     fontSize: 12,
     color: "#6b7280",
-    marginBottom: 8,
+  },
+  subjectBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+  },
+  subjectBadgeIcon: {
+    fontSize: 10,
+  },
+  subjectBadgeText: {
+    fontSize: 10,
+    color: "#FFF",
+    fontWeight: "700",
   },
   snippet: { fontSize: 14, color: "#475569", marginTop: 6 },
   deleteButton: { position: "absolute", top: 10, right: 10, padding: 6 },
@@ -1288,31 +1346,85 @@ const styles = StyleSheet.create({
   detailActionText: { color: "#fff", fontWeight: "700", marginLeft: 6 },
   optionsOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  optionsOverlayTouchable: {
+    flex: 1,
+    width: "100%",
   },
   optionsCard: {
-    width: "88%",
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+  },
+  optionsHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#d1d5db",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
   },
   optionsTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: "800",
     color: "#111827",
-    marginBottom: 10,
+    marginBottom: 6,
   },
-  optionItem: {
+  optionsSubtitle: {
+    fontSize: 14,
+    color: "#6b7280",
+    marginBottom: 20,
+  },
+  optionsGrid: {
+    gap: 12,
+  },
+  optionCard: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+  },
+  optionIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  optionCardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 4,
+  },
+  optionCardDesc: {
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
+  },
+  uploadingIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    gap: 10,
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 12,
+    backgroundColor: "#EEF2FF",
+    borderRadius: 12,
   },
-  optionText: { fontSize: 16, color: "#111827" },
-  optionsClose: { marginTop: 6, alignItems: "flex-end" },
-  optionsCloseText: { color: "#6b7280", fontWeight: "700" },
+  uploadingText: {
+    fontSize: 14,
+    color: "#6366F1",
+    fontWeight: "600",
+  },
   // Fullscreen viewer styles
   fsContainer: { flex: 1, backgroundColor: "#fff" },
   fsHeader: {
@@ -1404,13 +1516,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     right: 20,
     bottom: 20,
-    backgroundColor: "#6C63FF",
+    backgroundColor: "#9333ea",
     borderRadius: 28,
-    elevation: 8,
+    elevation: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   subjectFilterContainer: {
     backgroundColor: 'rgba(0,0,0,0.15)',

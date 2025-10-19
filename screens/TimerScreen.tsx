@@ -12,6 +12,7 @@ import {
   FlatList,
   StyleSheet,
   Image,
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -86,7 +87,7 @@ const ImageViewerModal = ({
     </Modal>
   );
 };
-import { ScreenName, SoundPreset, Task, UserSettings } from "../types";
+import { ScreenName, SoundPreset, Task, Subject, UserSettings } from "../types";
 import {
   AUTH_MODAL_HEIGHT,
   TIMER_END_TIME_KEY,
@@ -121,6 +122,9 @@ import SettingsModal from "../components/modals/SettingsModal";
 import TaskInputModal from "../components/modals/TaskInputModal";
 import NotesModal from "../components/modals/NotesModal";
 import SubjectsScreen from "./SubjectsScreen";
+import FlipDeviceOverlay from "../components/FlipDeviceOverlay";
+import AddCustomTaskModal from "../components/modals/AddCustomTaskModal";
+import EditTaskModal from "../components/modals/EditTaskModal";
 
 // Notes type
 interface Note {
@@ -271,6 +275,7 @@ export default function TimerScreen() {
   const [selectedSound, setSelectedSound] = useState<SoundPreset>(
     SOUND_PRESETS[0]
   );
+  const [isFlipDeviceOn, setIsFlipDeviceOn] = useState(false);
 
   // --- UI/Auth State ---
   const [user, setUser] = useState<User | null>(null);
@@ -287,6 +292,10 @@ export default function TimerScreen() {
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [showTimeTableModal, setShowTimeTableModal] = useState(false);
+  const [showAddCustomTaskModal, setShowAddCustomTaskModal] = useState(false);
+  const [showEditTaskModal, setShowEditTaskModal] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+  const [isEditForPlayAgain, setIsEditForPlayAgain] = useState(false);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<{
     taskTitle: string;
@@ -310,6 +319,7 @@ export default function TimerScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
 
   // AppState ref
   const appState = useRef<AppStateStatus>(AppState.currentState);
@@ -460,6 +470,47 @@ export default function TimerScreen() {
     );
 
     return () => unsubscribe();
+  }, [user]);
+
+  // Setup Firestore real-time listener for subjects
+  useEffect(() => {
+    if (!user) {
+      setSubjects([]);
+      return;
+    }
+
+    console.log("📚 Setting up Firestore listener for subjects:", user.uid);
+
+    const subjectsQuery = query(
+      collection(db, "subjects"),
+      where("userId", "==", user.uid)
+    );
+
+    const unsubscribeSubjects = onSnapshot(
+      subjectsQuery,
+      (snapshot) => {
+        const fetchedSubjects: Subject[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          fetchedSubjects.push({
+            id: doc.id,
+            name: data.name,
+            color: data.color,
+            icon: data.icon,
+            createdAt: data.createdAt,
+            userId: data.userId,
+          });
+        });
+
+        console.log("✅ Subjects loaded from Firestore:", fetchedSubjects.length);
+        setSubjects(fetchedSubjects);
+      },
+      (error) => {
+        console.error("❌ Error listening to subjects:", error);
+      }
+    );
+
+    return () => unsubscribeSubjects();
   }, [user]);
 
   // Setup Firestore real-time listener for notes
@@ -1013,12 +1064,13 @@ export default function TimerScreen() {
 
     if (!user) return;
 
-    // Create new task in Firestore
+    // Create new task in Firestore with "active" status immediately
+    // This ensures flip timeout will always find the task in "active" state
     const newTask: any = {
       title: taskTitle,
       duration: initialTime / 60,
       createdAt: Date.now(),
-      status: "pending", // Start as pending, will become active when timer starts
+      status: "active", // Start as active since timer starts immediately
       userId: user.uid,
     };
 
@@ -1031,7 +1083,7 @@ export default function TimerScreen() {
       const tasksRef = collection(db, "tasks");
       const docRef = doc(tasksRef);
       await setDoc(docRef, newTask);
-      console.log("✅ Task saved to Firestore");
+      console.log("✅ Task saved to Firestore with active status");
 
       // Create the full task object with the generated ID
       const fullTask: Task = {
@@ -1039,25 +1091,16 @@ export default function TimerScreen() {
         id: docRef.id,
       };
 
-      // Set current task immediately for better UX
+      // Set current task immediately with active status
       setCurrentTask(fullTask);
 
-      // Update task status to active and start timer
-      try {
-        await updateDoc(doc(db, "tasks", docRef.id), { status: "active" });
-        console.log("✅ Task status updated to active");
-
-        // Update local state immediately for better UX
-        setCurrentTask((prev) => (prev ? { ...prev, status: "active" } : null));
-      } catch (statusError) {
-        console.error("❌ Failed to update task status:", statusError);
-      }
-
-      // Start timer
+      // Start timer immediately
       setIsActive(true);
       const endTime = Date.now() + seconds * 1000;
       await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
       await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+      
+      console.log("✅ Timer started with task in active status");
     } catch (error) {
       console.error("❌ Failed to save task to Firestore:", error);
       Alert.alert("Error", "Failed to save task. Please try again.");
@@ -1066,31 +1109,9 @@ export default function TimerScreen() {
 
   const handleEditCurrentTask = () => {
     if (!currentTask || !user) return;
-
-    Alert.prompt(
-      "Edit Task",
-      "Update your task title:",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Save",
-          onPress: async (newTitle?: string) => {
-            if (newTitle && newTitle.trim()) {
-              try {
-                const taskRef = doc(db, "tasks", currentTask.id);
-                await updateDoc(taskRef, { title: newTitle.trim() });
-                console.log("✅ Task updated in Firestore");
-              } catch (error) {
-                console.error("❌ Failed to update task:", error);
-                Alert.alert("Error", "Failed to update task.");
-              }
-            }
-          },
-        },
-      ],
-      "plain-text",
-      currentTask.title
-    );
+    setTaskToEdit(currentTask);
+    setIsEditForPlayAgain(false);
+    setShowEditTaskModal(true);
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -1128,6 +1149,323 @@ export default function TimerScreen() {
     ]);
   };
 
+  // Handler to add a custom task with pending status
+  const handleAddCustomTask = async (title: string, duration: number, subjectId?: string) => {
+    if (!user) {
+      Alert.alert("Error", "Please sign in to add tasks.");
+      return;
+    }
+
+    try {
+      const newTask: any = {
+        title,
+        duration,
+        createdAt: Date.now(),
+        status: "pending",
+        userId: user.uid,
+      };
+
+      // Add subjectId if provided
+      if (subjectId) {
+        newTask.subjectId = subjectId;
+      }
+
+      const tasksRef = collection(db, "tasks");
+      const docRef = doc(tasksRef);
+      await setDoc(docRef, newTask);
+      console.log("✅ Custom task added with pending status" + (subjectId ? " and assigned to subject" : ""));
+      
+      Alert.alert("Success", "Task added! Use the play button to start it.");
+    } catch (error) {
+      console.error("❌ Failed to add custom task:", error);
+      Alert.alert("Error", "Failed to add task. Please try again.");
+    }
+  };
+
+  // Handler to play a pending task
+  const handlePlayTask = async (task: Task) => {
+    if (!user) return;
+    
+    // Check if there's already an active task
+    if (currentTask && currentTask.status === "active") {
+      Alert.alert(
+        "Active Task Running",
+        "Please complete or stop the current task before starting a new one."
+      );
+      return;
+    }
+
+    try {
+      // Set this task as current and update to active
+      setCurrentTask({ ...task, status: "active" });
+      
+      // Update task status in Firestore
+      const taskRef = doc(db, "tasks", task.id);
+      await updateDoc(taskRef, { status: "active" });
+      console.log("✅ Task status updated to active");
+
+      // Set timer duration based on task
+      const taskSeconds = task.duration * 60;
+      setInitialTime(taskSeconds);
+      setSeconds(taskSeconds);
+
+      // Start timer
+      setIsActive(true);
+      const endTime = Date.now() + taskSeconds * 1000;
+      await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
+      await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+
+      // Schedule completion notification
+      const notificationId = await scheduleTimerCompletionNotification(
+        taskSeconds,
+        task.title
+      );
+      setCompletionNotificationId(notificationId);
+
+      // Switch to Timer screen
+      setActiveScreen("Timer");
+      
+      console.log(`✅ Started task: ${task.title} (${task.duration} min)`);
+    } catch (error) {
+      console.error("❌ Failed to start task:", error);
+      Alert.alert("Error", "Failed to start task. Please try again.");
+    }
+  };
+
+  // Handler to play a completed task again - shows dialog with Edit/Play options
+  const handlePlayAgain = async (task: Task) => {
+    if (!user) return;
+    
+    // Check if there's already an active task
+    if (currentTask && currentTask.status === "active") {
+      Alert.alert(
+        "Active Task Running",
+        "Please complete or stop the current task before starting a new one."
+      );
+      return;
+    }
+
+    // Show dialog with Edit and Play Again options
+    Alert.alert(
+      "Play Again",
+      `What would you like to do with "${task.title}"?`,
+      [
+        {
+          text: "Edit & Play",
+          onPress: () => handleEditAndPlay(task),
+        },
+        {
+          text: "Play Again",
+          onPress: async () => {
+            try {
+              // Create a new task with the same title and duration
+              const newTask: any = {
+                title: task.title,
+                duration: task.duration,
+                createdAt: Date.now(),
+                status: "active",
+                userId: user.uid,
+              };
+
+              // Copy subjectId if it exists
+              if (task.subjectId) {
+                newTask.subjectId = task.subjectId;
+              }
+
+              const tasksRef = collection(db, "tasks");
+              const docRef = doc(tasksRef);
+              await setDoc(docRef, newTask);
+              console.log("✅ New task created from completed task");
+
+              // Set as current task
+              const fullTask: Task = {
+                ...newTask,
+                id: docRef.id,
+              };
+              setCurrentTask(fullTask);
+
+              // Set timer duration
+              const taskSeconds = task.duration * 60;
+              setInitialTime(taskSeconds);
+              setSeconds(taskSeconds);
+
+              // Start timer
+              setIsActive(true);
+              const endTime = Date.now() + taskSeconds * 1000;
+              await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
+              await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+
+              // Schedule completion notification
+              const notificationId = await scheduleTimerCompletionNotification(
+                taskSeconds,
+                task.title
+              );
+              setCompletionNotificationId(notificationId);
+
+              // Switch to Timer screen
+              setActiveScreen("Timer");
+              
+              console.log(`✅ Restarted task: ${task.title}`);
+            } catch (error) {
+              console.error("❌ Failed to restart task:", error);
+              Alert.alert("Error", "Failed to restart task. Please try again.");
+            }
+          },
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  };
+
+  // Handler to edit a task (for regular edit)
+  const handleEditTask = (task: Task) => {
+    if (!user) return;
+    setTaskToEdit(task);
+    setIsEditForPlayAgain(false);
+    setShowEditTaskModal(true);
+  };
+
+  // Handler to edit and play (for play again with edit)
+  const handleEditAndPlay = (task: Task) => {
+    if (!user) return;
+    
+    // Check if there's already an active task
+    if (currentTask && currentTask.status === "active") {
+      Alert.alert(
+        "Active Task Running",
+        "Please complete or stop the current task before starting a new one."
+      );
+      return;
+    }
+    
+    setTaskToEdit(task);
+    setIsEditForPlayAgain(true);
+    setShowEditTaskModal(true);
+  };
+
+  // Handler to save edited task
+  const handleSaveEditedTask = async (newTitle: string) => {
+    if (!taskToEdit || !user) return;
+
+    try {
+      if (isEditForPlayAgain) {
+        // Create NEW task with edited name and start it
+        const newTask: any = {
+          title: newTitle,
+          duration: taskToEdit.duration,
+          createdAt: Date.now(),
+          status: "active",
+          userId: user.uid,
+        };
+
+        // Copy subjectId if it exists
+        if (taskToEdit.subjectId) {
+          newTask.subjectId = taskToEdit.subjectId;
+        }
+
+        const tasksRef = collection(db, "tasks");
+        const docRef = doc(tasksRef);
+        await setDoc(docRef, newTask);
+        console.log("✅ New task created with edited name");
+
+        // Set as current task
+        const fullTask: Task = {
+          ...newTask,
+          id: docRef.id,
+        };
+        setCurrentTask(fullTask);
+
+        // Set timer duration
+        const taskSeconds = taskToEdit.duration * 60;
+        setInitialTime(taskSeconds);
+        setSeconds(taskSeconds);
+
+        // Start timer
+        setIsActive(true);
+        const endTime = Date.now() + taskSeconds * 1000;
+        await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
+        await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+
+        // Schedule completion notification
+        const notificationId = await scheduleTimerCompletionNotification(
+          taskSeconds,
+          newTitle
+        );
+        setCompletionNotificationId(notificationId);
+
+        // Switch to Timer screen
+        setActiveScreen("Timer");
+        
+        console.log(`✅ Started new task with edited name: ${newTitle}`);
+      } else {
+        // Regular edit - update existing task
+        const taskRef = doc(db, "tasks", taskToEdit.id);
+        await updateDoc(taskRef, { title: newTitle });
+        console.log("✅ Task title updated");
+        
+        // Update current task if it's the one being edited
+        if (currentTask?.id === taskToEdit.id) {
+          setCurrentTask({ ...currentTask, title: newTitle });
+        }
+      }
+    } catch (error) {
+      console.error("❌ Failed to save task:", error);
+      Alert.alert("Error", "Failed to save task. Please try again.");
+    }
+  };
+
+  // Handler to abandon a pending task - instant without confirmation
+  const handleAbandonTask = async (taskId: string) => {
+    if (!user) return;
+
+    try {
+      const taskRef = doc(db, "tasks", taskId);
+      await updateDoc(taskRef, {
+        status: "abandoned",
+        abandonedAt: Date.now(),
+      });
+      console.log("✅ Task marked as abandoned");
+    } catch (error) {
+      console.error("❌ Failed to abandon task:", error);
+      Alert.alert("Error", "Failed to abandon task.");
+    }
+  };
+
+  // Handler to abandon the current active task - instant without confirmation
+  const handleAbandonCurrentTask = async () => {
+    if (!currentTask || !user) return;
+
+    try {
+      // Stop the timer
+      setIsActive(false);
+      setSeconds(initialTime);
+      await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
+      await AsyncStorage.removeItem(TIMER_STATUS_KEY);
+      cancelTimerNotification();
+      
+      // Cancel completion notification
+      await cancelTimerCompletionNotification(completionNotificationId);
+      setCompletionNotificationId(null);
+
+      // Mark task as abandoned
+      const taskRef = doc(db, "tasks", currentTask.id);
+      await updateDoc(taskRef, {
+        status: "abandoned",
+        abandonedAt: Date.now(),
+      });
+      console.log("✅ Current task marked as abandoned");
+
+      // Clear current task
+      setCurrentTask(null);
+    } catch (error) {
+      console.error("❌ Failed to abandon current task:", error);
+      Alert.alert("Error", "Failed to abandon task.");
+    }
+  };
+
   const handleReset = async () => {
     setIsActive(false);
     setSeconds(initialTime);
@@ -1158,6 +1496,55 @@ export default function TimerScreen() {
     }
   };
 
+  const handleFlipTimeout = async () => {
+    console.log("⚠️ Flip timeout triggered - abandoning task");
+    
+    // Stop the timer
+    setIsActive(false);
+    setSeconds(initialTime);
+    await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
+    await AsyncStorage.removeItem(TIMER_STATUS_KEY);
+    cancelTimerNotification();
+    
+    // Cancel completion notification
+    await cancelTimerCompletionNotification(completionNotificationId);
+    setCompletionNotificationId(null);
+
+    // Mark current task as abandoned in Firestore (works for both "pending" and "active" tasks)
+    if (currentTask && user) {
+      try {
+        const taskRef = doc(db, "tasks", currentTask.id);
+        
+        // Get current task status for logging
+        const taskDoc = await getDoc(taskRef);
+        const currentStatus = taskDoc.exists() ? taskDoc.data()?.status : "unknown";
+        console.log(`⚠️ Abandoning task with current status: ${currentStatus}`);
+        
+        // Update to abandoned regardless of current status
+        await updateDoc(taskRef, { 
+          status: "abandoned",
+          abandonedAt: Date.now()
+        });
+        console.log("✅ Task marked as abandoned due to flip timeout");
+
+        // Update local state
+        setCurrentTask(null);
+        
+        // Show alert to user
+        Alert.alert(
+          "Session Abandoned",
+          "You didn't flip your device in time. The session has been stopped and the task marked as abandoned.",
+          [{ text: "OK" }]
+        );
+      } catch (error) {
+        console.error("❌ Failed to abandon task:", error);
+        Alert.alert("Error", "Failed to abandon task. Please try again.");
+      }
+    } else {
+      console.log("⚠️ No current task to abandon");
+    }
+  };
+
   const renderContent = () => {
     switch (activeScreen) {
       case "Timer":
@@ -1173,6 +1560,7 @@ export default function TimerScreen() {
             progressPercentage={progressPercentage}
             currentTask={currentTask}
             onEditTask={handleEditCurrentTask}
+            onAbandonTask={handleAbandonCurrentTask}
             onAddOneMinute={handleAddOneMinute}
             theme={currentTheme}
           />
@@ -1185,6 +1573,7 @@ export default function TimerScreen() {
             onOpenAppearance={() => setShowAppearanceModal(true)}
             onOpenTimeTable={() => setShowTimeTableModal(true)}
             onOpenSubjects={() => setShowSubjectsModal(true)}
+            theme={currentTheme}
           />
         );
       case "Flashcards":
@@ -1199,9 +1588,14 @@ export default function TimerScreen() {
         return (
           <TasksContent
             tasks={tasks}
-            onEditTask={(task) => console.log("Edit task:", task)}
+            onEditTask={handleEditTask}
             onDeleteTask={handleDeleteTask}
+            onPlayTask={handlePlayTask}
+            onPlayAgain={handlePlayAgain}
+            onAbandonTask={handleAbandonTask}
+            onAddCustomTask={() => setShowAddCustomTaskModal(true)}
             currentTaskId={currentTask?.id || null}
+            theme={currentTheme}
           />
         );
       default:
@@ -1217,6 +1611,7 @@ export default function TimerScreen() {
             progressPercentage={progressPercentage}
             currentTask={currentTask}
             onEditTask={handleEditCurrentTask}
+            onAbandonTask={handleAbandonCurrentTask}
             onAddOneMinute={handleAddOneMinute}
             theme={currentTheme}
           />
@@ -1318,6 +1713,15 @@ export default function TimerScreen() {
         ]}
       >
         {renderContent()}
+        
+        {/* Flip Device Overlay - Only show on Timer screen */}
+        {activeScreen === "Timer" && (
+          <FlipDeviceOverlay
+            isActive={isActive}
+            flipDeviceEnabled={isFlipDeviceOn}
+            onTimeout={handleFlipTimeout}
+          />
+        )}
       </View>
 
       {/* Bottom Nav */}
@@ -1480,8 +1884,9 @@ export default function TimerScreen() {
             flexDirection: 'row', 
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: 16,
-            paddingTop: 50,
+            paddingHorizontal: 16,
+            paddingTop: Platform.OS === 'ios' ? 60 : 16,
+            paddingBottom: 16,
             backgroundColor: '#FFF',
             borderBottomWidth: 1,
             borderBottomColor: '#E2E8F0',
@@ -1521,6 +1926,26 @@ export default function TimerScreen() {
         onToggleVibration={setIsVibrationOn}
         onSelectSound={setSelectedSound}
         soundPresets={SOUND_PRESETS}
+        isFlipDeviceOn={isFlipDeviceOn}
+        onToggleFlipDevice={setIsFlipDeviceOn}
+      />
+
+      <AddCustomTaskModal
+        visible={showAddCustomTaskModal}
+        onClose={() => setShowAddCustomTaskModal(false)}
+        onSave={handleAddCustomTask}
+        subjects={subjects}
+      />
+
+      <EditTaskModal
+        visible={showEditTaskModal}
+        onClose={() => {
+          setShowEditTaskModal(false);
+          setTaskToEdit(null);
+          setIsEditForPlayAgain(false);
+        }}
+        onSave={handleSaveEditedTask}
+        currentTitle={taskToEdit?.title || ""}
       />
 
       <NotesModal

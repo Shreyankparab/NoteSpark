@@ -2,40 +2,81 @@ import React from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Task } from "../types";
+import { Theme } from "../constants/themes";
 
 interface TasksContentProps {
   tasks: Task[];
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
+  onPlayTask: (task: Task) => void;
+  onPlayAgain: (task: Task) => void;
+  onAbandonTask: (taskId: string) => void;
+  onAddCustomTask: () => void;
   currentTaskId: string | null;
+  theme?: Theme;
 }
 
 const TasksContent: React.FC<TasksContentProps> = ({
   tasks,
   onEditTask,
   onDeleteTask,
+  onPlayTask,
+  onPlayAgain,
+  onAbandonTask,
+  onAddCustomTask,
   currentTaskId,
+  theme,
 }) => {
   const sortedTasks = [...tasks].sort((a, b) => b.createdAt - a.createdAt);
   
   console.log("🎯 TasksContent received tasks:", tasks.length);
   console.log("🎯 Sorted tasks:", sortedTasks);
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "#10b981";
+      case "active":
+        return "#9333ea";
+      case "abandoned":
+        return "#ef4444";
+      case "pending":
+      default:
+        return "#f59e0b";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "checkmark-circle";
+      case "active":
+        return "timer";
+      case "abandoned":
+        return "close-circle";
+      case "pending":
+      default:
+        return "time-outline";
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "completed":
+        return "Completed";
+      case "active":
+        return "In Progress";
+      case "abandoned":
+        return "Abandoned";
+      case "pending":
+      default:
+        return "Pending";
+    }
+  };
+
   return (
     <View style={styles.tasksContainer}>
       <Text style={styles.tasksTitle}>Your Tasks</Text>
-      
-      {/* Debug Info - Remove this after fixing */}
-      {__DEV__ && (
-        <View style={styles.debugContainer}>
-          <Text style={styles.debugText}>
-            Debug: {tasks.length} tasks total, {sortedTasks.length} sorted
-          </Text>
-          <Text style={styles.debugSubText}>
-            Current Task ID: {currentTaskId || 'none'}
-          </Text>
-        </View>
-      )}
       
       {sortedTasks.length === 0 ? (
         <View style={styles.emptyTasksContainer}>
@@ -46,11 +87,11 @@ const TasksContent: React.FC<TasksContentProps> = ({
           />
           <Text style={styles.placeholderText}>No tasks yet</Text>
           <Text style={styles.placeholderSubText}>
-            Start a timer to create your first task
+            Tap the + button to add your first task
           </Text>
         </View>
       ) : (
-        <ScrollView style={styles.tasksList}>
+        <ScrollView style={styles.tasksList} showsVerticalScrollIndicator={false}>
           {sortedTasks.map((task) => (
             <View
               key={task.id}
@@ -62,38 +103,81 @@ const TasksContent: React.FC<TasksContentProps> = ({
               <View style={styles.taskCardHeader}>
                 <View style={styles.taskCardTitleRow}>
                   <Ionicons
-                    name={
-                      task.status === "completed"
-                        ? "checkmark-circle"
-                        : task.status === "active"
-                        ? "timer"
-                        : "ellipse-outline"
-                    }
-                    size={20}
-                    color={
-                      task.status === "completed"
-                        ? "#10b981"
-                        : task.status === "active"
-                        ? "#9333ea"
-                        : "#94a3b8"
-                    }
+                    name={getStatusIcon(task.status)}
+                    size={22}
+                    color={getStatusColor(task.status)}
                   />
-                  <Text style={styles.taskCardTitle}>{task.title}</Text>
+                  <View style={styles.taskInfo}>
+                    <Text style={styles.taskCardTitle}>{task.title}</Text>
+                    <View style={styles.taskMeta}>
+                      <Text style={styles.taskCardDuration}>
+                        <Ionicons name="time-outline" size={12} color="#64748b" />
+                        {" "}{task.duration} min
+                      </Text>
+                      <View style={[
+                        styles.statusBadge,
+                        { backgroundColor: getStatusColor(task.status) + "20" }
+                      ]}>
+                        <Text style={[
+                          styles.statusBadgeText,
+                          { color: getStatusColor(task.status) }
+                        ]}>
+                          {getStatusText(task.status)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-                <TouchableOpacity onPress={() => onDeleteTask(task.id)}>
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                </TouchableOpacity>
+                
+                {/* Action Buttons */}
+                <View style={styles.actionButtons}>
+                  {/* Pending Tasks: Play & Abandon Buttons */}
+                  {task.status === "pending" && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.abandonButton}
+                        onPress={() => onAbandonTask(task.id)}
+                      >
+                        <Ionicons name="close" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.playButton}
+                        onPress={() => onPlayTask(task)}
+                      >
+                        <Ionicons name="play" size={20} color="#fff" />
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  
+                  {/* Completed Tasks: Play Again only (edit option in dialog) */}
+                  {task.status === "completed" && (
+                    <TouchableOpacity
+                      style={styles.playAgainButton}
+                      onPress={() => onPlayAgain(task)}
+                    >
+                      <Ionicons name="refresh" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  )}
+                  
+                  {/* Active Tasks: No actions */}
+                  {task.status === "active" && (
+                    <View style={styles.activeIndicator}>
+                      <Text style={styles.activeText}>Running</Text>
+                    </View>
+                  )}
+                  
+                  {/* Abandoned Tasks: Delete only */}
+                  {task.status === "abandoned" && (
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => onDeleteTask(task.id)}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-              <View style={styles.taskCardDetails}>
-                <Text style={styles.taskCardDuration}>{task.duration} min</Text>
-                <Text style={styles.taskCardStatus}>
-                  {task.status === "completed"
-                    ? "Completed"
-                    : task.status === "active"
-                    ? "In Progress"
-                    : "Pending"}
-                </Text>
-              </View>
+              
               <Text style={styles.taskCardDate}>
                 {new Date(task.createdAt).toLocaleDateString()} at{" "}
                 {new Date(task.createdAt).toLocaleTimeString([], {
@@ -105,6 +189,18 @@ const TasksContent: React.FC<TasksContentProps> = ({
           ))}
         </ScrollView>
       )}
+      
+      {/* Floating Action Button */}
+      <TouchableOpacity
+        style={[
+          styles.fab,
+          { backgroundColor: theme?.accentColor || "#9333ea" }
+        ]}
+        onPress={onAddCustomTask}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -163,33 +259,127 @@ const styles = StyleSheet.create({
   },
   taskCardTitleRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     flex: 1,
-    gap: 8,
+    gap: 10,
+  },
+  taskInfo: {
+    flex: 1,
   },
   taskCardTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#333",
-    flex: 1,
+    color: "#1e293b",
+    marginBottom: 6,
   },
-  taskCardDetails: {
+  taskMeta: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
+    alignItems: "center",
+    gap: 10,
   },
   taskCardDuration: {
-    fontSize: 14,
-    color: "#666",
-  },
-  taskCardStatus: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: 13,
+    color: "#64748b",
     fontWeight: "500",
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  actionButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  playButton: {
+    backgroundColor: "#10b981",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#10b981",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  playAgainButton: {
+    backgroundColor: "#9333ea",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#9333ea",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  editButton: {
+    backgroundColor: "#f1f5f9",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButton: {
+    backgroundColor: "#fee2e2",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  abandonButton: {
+    backgroundColor: "#fee2e2",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeIndicator: {
+    backgroundColor: "#ede9fe",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  activeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#9333ea",
   },
   taskCardDate: {
     fontSize: 12,
-    color: "#999",
+    color: "#94a3b8",
+    marginTop: 8,
+  },
+  fab: {
+    position: "absolute",
+    right: 24,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#9333ea",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 12,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
 });
 
