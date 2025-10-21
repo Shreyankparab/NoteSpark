@@ -17,35 +17,74 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { StatusBar } from "expo-status-bar";
+import { Audio } from "expo-av";
+import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
+import { auth, db } from "../firebase/firebaseConfig";
 import {
-  User,
   onAuthStateChanged,
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
-import { auth } from "../firebase/firebaseConfig";
 import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
   collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
   query,
   where,
-  deleteDoc,
   onSnapshot,
+  orderBy,
+  limit,
+  setDoc,
+  getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebase/firebaseConfig";
-import { saveImage } from "../utils/imageStorage";
+import {
+  TIMER_END_TIME_KEY,
+  TIMER_STATUS_KEY,
+  SOUND_PRESETS,
+  AUTH_MODAL_HEIGHT,
+  WhiteNoiseType,
+  WHITE_NOISE_PRESETS,
+  WHITE_NOISE_SOUND_MAP,
+} from "../constants";
+import { SoundPreset, UserSettings, Task, Subject } from "../types";
+import {
+  scheduleTimerNotification,
+  cancelTimerNotification,
+  scheduleTimerCompletionNotification,
+  cancelTimerCompletionNotification,
+  areNotificationsAvailable,
+  setupNotifications,
+} from "../utils/notifications";
+import {
+  loadSettings,
+  saveSettings,
+  playCompletionSound,
+} from "../utils";
+import { signInWithGoogle, getGoogleSetupHelp } from "../utils/googleAuth";
+import { DEFAULT_THEME, getThemeById } from "../constants/themes";
+import TimerContent from "../components/TimerContent";
+import NotesContent from "../components/NotesContent";
+import TasksContent from "../components/TasksContent";
+import PlaceholderContent from "../components/PlaceholderContent";
+import ProfileModal from "../components/modals/ProfileModal";
+import SettingsModal from "../components/modals/SettingsModal";
+import TaskInputModal from "../components/modals/TaskInputModal";
+import NotesModal from "../components/modals/NotesModal";
 import ImageCaptureModal from "../components/modals/ImageCaptureModal";
+import NavButton from "../components/NavButton";
+import NetworkStatusBanner from "../components/NetworkStatusBanner";
+import SubjectsScreen from "./SubjectsScreen";
 import TimeTableModal from "../components/modals/TimeTableModal";
-import AppearanceScreen from "./AppearanceScreen";
-import { getThemeById, DEFAULT_THEME, Theme } from "../constants/themes";
-
-// Import types and constants
+import AddCustomTaskModal from "../components/modals/AddCustomTaskModal";
+import EditTaskModal from "../components/modals/EditTaskModal";
+import FlipDeviceOverlay from "../components/FlipDeviceOverlay";
+import WhiteNoiseModal from "../components/modals/WhiteNoiseModal";
 
 // Image Viewer Modal Component
 const ImageViewerModal = ({
@@ -87,46 +126,8 @@ const ImageViewerModal = ({
     </Modal>
   );
 };
-import { ScreenName, SoundPreset, Task, Subject, UserSettings } from "../types";
-import {
-  AUTH_MODAL_HEIGHT,
-  TIMER_END_TIME_KEY,
-  TIMER_STATUS_KEY,
-  SOUND_PRESETS,
-} from "../constants";
 
-// Import utilities
-import { playCompletionSound } from "../utils/audio";
-import {
-  scheduleTimerNotification,
-  cancelTimerNotification,
-  setupNotifications,
-  areNotificationsAvailable,
-  scheduleTimerCompletionNotification,
-  cancelTimerCompletionNotification,
-} from "../utils/notifications";
-import { loadSettings, saveSettings } from "../utils/storage";
-import * as WebBrowser from "expo-web-browser";
-import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
-import { signInWithGoogle, getGoogleSetupHelp } from "../utils/googleAuth";
-WebBrowser.maybeCompleteAuthSession();
-
-// Import components
-import NavButton from "../components/NavButton";
-import TimerContent from "../components/TimerContent";
-import TasksContent from "../components/TasksContent";
-import NotesContent from "../components/NotesContent";
-import PlaceholderContent from "../components/PlaceholderContent";
-import ProfileModal from "../components/modals/ProfileModal";
-import SettingsModal from "../components/modals/SettingsModal";
-import TaskInputModal from "../components/modals/TaskInputModal";
-import NotesModal from "../components/modals/NotesModal";
-import SubjectsScreen from "./SubjectsScreen";
-import FlipDeviceOverlay from "../components/FlipDeviceOverlay";
-import AddCustomTaskModal from "../components/modals/AddCustomTaskModal";
-import EditTaskModal from "../components/modals/EditTaskModal";
-
-// Notes type
+// Types
 interface Note {
   id: string;
   title: string;
@@ -136,11 +137,16 @@ interface Note {
   pinned?: boolean;
   userId: string;
   taskId?: string | null;
-  duration?: number; // Pomodoro duration in seconds
-  imageUrl?: string; // URL to the image associated with the note
+  duration?: number;
+  imageUrl?: string;
 }
 
-// Normalize Firestore Timestamp/number to millis
+import { User } from "firebase/auth";
+import { Theme } from "../constants/themes";
+
+type ScreenName = "Timer" | "Notes" | "Flashcards" | "Tasks";
+
+// Helper functions
 const toMillis = (val: any): number | undefined => {
   if (!val) return undefined;
   if (typeof val === "number") return val;
@@ -149,12 +155,10 @@ const toMillis = (val: any): number | undefined => {
   return undefined;
 };
 
-// BACKGROUND TASK PLACEHOLDER
 const registerTimerTask = async () => {
   console.log("Background timer task registered.");
 };
 
-// FIRESTORE: Create initial user document
 const createInitialUserDocument = async (userId: string) => {
   try {
     const userRef = doc(db, "users", userId);
@@ -171,12 +175,9 @@ const createInitialUserDocument = async (userId: string) => {
   }
 };
 
-// Helper function to check task achievements on load (silently, without notifications)
 const checkTaskAchievementsOnLoad = async (userId: string, completedTasksCount: number) => {
   try {
     const { checkTasksCompletedAchievements } = require("../utils/achievements");
-    
-    // Silently check and unlock achievements without showing notifications
     await checkTasksCompletedAchievements(userId, completedTasksCount);
     console.log(`✅ Checked task achievements on load: ${completedTasksCount} tasks completed`);
   } catch (error) {
@@ -184,7 +185,6 @@ const checkTaskAchievementsOnLoad = async (userId: string, completedTasksCount: 
   }
 };
 
-// FIRESTORE: Update streak logic
 const updateStreak = async (userId: string): Promise<number> => {
   try {
     const userRef = doc(db, "users", userId);
@@ -206,16 +206,12 @@ const updateStreak = async (userId: string): Promise<number> => {
     }
 
     const data = userSnap.data();
-    const lastActive = data?.lastActive?.toDate
-      ? data.lastActive.toDate()
-      : null;
+    const lastActive = data?.lastActive?.toDate ? data.lastActive.toDate() : null;
     let streak = data?.streak || 0;
     let activeDays = (data?.activeDays || []) as string[];
     let streakStartDate = data?.streakStartDate || todayStr;
 
-    // Check if today is already recorded
     if (activeDays.includes(todayStr)) {
-      // User already visited today, no changes needed
       return streak;
     }
 
@@ -235,17 +231,13 @@ const updateStreak = async (userId: string): Promise<number> => {
     lastActiveDay.setHours(0, 0, 0, 0);
 
     if (lastActiveDay.getTime() === yesterday.getTime()) {
-      // Case A: User visited YESTERDAY. Streak continues!
       streak += 1;
       activeDays = [...activeDays, todayStr];
     } else if (lastActiveDay.getTime() < yesterday.getTime()) {
-      // Case B: User skipped at least one full day. Streak reset.
       streak = 1;
-      // Start new streak, keep only today
       activeDays = [todayStr];
       streakStartDate = todayStr;
     }
-    // If lastActiveDay is today, this shouldn't happen due to the check above
 
     await updateDoc(userRef, { 
       streak, 
@@ -285,7 +277,9 @@ export default function TimerScreen() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showTaskInputModal, setShowTaskInputModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
-  const [showAppearanceModal, setShowAppearanceModal] = useState(false);
+  const [showWhiteNoiseModal, setShowWhiteNoiseModal] = useState(false);
+  const [selectedWhiteNoise, setSelectedWhiteNoise] = useState<WhiteNoiseType>("None");
+  const [whiteNoiseSound, setWhiteNoiseSound] = useState<Audio.Sound | null>(null);
   const [showSubjectsModal, setShowSubjectsModal] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<Theme>(DEFAULT_THEME);
   const [completionNotificationId, setCompletionNotificationId] = useState<string | null>(null);
@@ -370,10 +364,10 @@ export default function TimerScreen() {
   useEffect(() => {
     const initializeSettings = async () => {
       const settings = await loadSettings();
-      setInitialTime((settings.duration || DEFAULT_MINUTES) * 60);
-      setIsSoundOn(settings.isSoundOn ?? true);
-      setIsVibrationOn(settings.isVibrationOn ?? true);
-      setSelectedSound(settings.selectedSound || SOUND_PRESETS[0]);
+      setInitialTime((settings?.duration || DEFAULT_MINUTES) * 60);
+      setIsSoundOn(settings?.isSoundOn ?? true);
+      setIsVibrationOn(settings?.isVibrationOn ?? true);
+      setSelectedSound(settings?.selectedSound || SOUND_PRESETS[0]);
       
       // Load saved theme
       try {
@@ -962,6 +956,146 @@ export default function TimerScreen() {
       setIsLoading(false);
     }
   };
+
+  // Test login functions for development
+  const handleTestLogin1 = async () => {
+    setEmail("shreyank@gmail.com");
+    setPassword("123456");
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, "shreyank@gmail.com", "123456");
+      Alert.alert("Success", "Test login 1 successful!");
+    } catch (error) {
+      Alert.alert("Error", (error as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTestLogin2 = async () => {
+    setEmail("joke@gmail.con");
+    setPassword("123456");
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, "joke@gmail.con", "123456");
+      Alert.alert("Success", "Test login 2 successful!");
+    } catch (error) {
+      Alert.alert("Error", (error as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTestLogin3 = async () => {
+    setEmail("newuser@gmail.com");
+    setPassword("123456");
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, "newuser@gmail.com", "123456");
+      Alert.alert("Success", "Test login 3 successful!");
+    } catch (error) {
+      Alert.alert("Error", (error as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // White noise handler
+  const handleWhiteNoiseSelect = async (whiteNoise: WhiteNoiseType) => {
+    try {
+      // Stop current white noise if playing
+      if (whiteNoiseSound) {
+        await whiteNoiseSound.stopAsync();
+        await whiteNoiseSound.unloadAsync();
+        setWhiteNoiseSound(null);
+      }
+
+      setSelectedWhiteNoise(whiteNoise);
+      
+      // Save preference
+      await AsyncStorage.setItem('selectedWhiteNoise', whiteNoise);
+      
+      // If timer is active and not "None", start playing
+      if (isActive && whiteNoise !== "None") {
+        await playWhiteNoise(whiteNoise);
+      }
+      
+      console.log(`✅ White noise selected: ${whiteNoise}`);
+    } catch (error) {
+      console.error('❌ Failed to select white noise:', error);
+    }
+  };
+
+  // Play white noise function
+  const playWhiteNoise = async (whiteNoise: WhiteNoiseType) => {
+    if (whiteNoise === "None") return;
+    
+    try {
+      const soundFile = WHITE_NOISE_SOUND_MAP[whiteNoise];
+      if (!soundFile) {
+        console.log(`⚠️ No sound file found for: ${whiteNoise}`);
+        return;
+      }
+      
+      const { sound } = await Audio.Sound.createAsync(
+        soundFile,
+        { 
+          isLooping: true,
+          volume: 0.3 // Lower volume for background noise
+        }
+      );
+      
+      await sound.playAsync();
+      setWhiteNoiseSound(sound);
+      console.log(`🎵 Playing white noise: ${whiteNoise}`);
+    } catch (error) {
+      console.error('❌ Failed to play white noise:', error);
+    }
+  };
+
+  // Stop white noise function
+  const stopWhiteNoise = async () => {
+    if (whiteNoiseSound) {
+      try {
+        await whiteNoiseSound.stopAsync();
+        await whiteNoiseSound.unloadAsync();
+        setWhiteNoiseSound(null);
+        console.log('🔇 White noise stopped');
+      } catch (error) {
+        console.error('❌ Failed to stop white noise:', error);
+      }
+    }
+  };
+
+  // Load white noise preference on app start
+  useEffect(() => {
+    const loadWhiteNoisePreference = async () => {
+      try {
+        const savedWhiteNoise = await AsyncStorage.getItem('selectedWhiteNoise');
+        if (savedWhiteNoise && WHITE_NOISE_PRESETS.includes(savedWhiteNoise as WhiteNoiseType)) {
+          setSelectedWhiteNoise(savedWhiteNoise as WhiteNoiseType);
+        }
+      } catch (error) {
+        console.error('❌ Failed to load white noise preference:', error);
+      }
+    };
+    
+    loadWhiteNoisePreference();
+  }, []);
+
+  // Start/stop white noise based on timer state
+  useEffect(() => {
+    if (isActive && selectedWhiteNoise !== "None") {
+      playWhiteNoise(selectedWhiteNoise);
+    } else {
+      stopWhiteNoise();
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      stopWhiteNoise();
+    };
+  }, [isActive, selectedWhiteNoise]);
 
   // Removed Expo hook response handler
 
@@ -1570,7 +1704,6 @@ export default function TimerScreen() {
           <NotesContent
             onOpenProfile={() => setShowProfileModal(true)}
             onOpenSettings={() => setShowSettingsModal(true)}
-            onOpenAppearance={() => setShowAppearanceModal(true)}
             onOpenTimeTable={() => setShowTimeTableModal(true)}
             onOpenSubjects={() => setShowSubjectsModal(true)}
             theme={currentTheme}
@@ -1650,11 +1783,11 @@ export default function TimerScreen() {
 
           <View style={styles.topRightButtons}>
             <TouchableOpacity
-              onPress={() => setShowAppearanceModal(true)}
+              onPress={() => setShowWhiteNoiseModal(true)}
               style={{ marginRight: 16 }}
             >
               <Ionicons
-                name="color-palette"
+                name="musical-notes"
                 size={28}
                 color="white"
               />
@@ -1730,25 +1863,25 @@ export default function TimerScreen() {
           icon="timer-outline"
           label="Timer"
           active={activeScreen === "Timer"}
-          onPress={setActiveScreen}
+          onPress={() => setActiveScreen("Timer")}
         />
         <NavButton
           icon="document-text-outline"
           label="Notes"
           active={activeScreen === "Notes"}
-          onPress={setActiveScreen}
+          onPress={() => setActiveScreen("Notes")}
         />
         <NavButton
           icon="flash-outline"
           label="Flashcards"
           active={activeScreen === "Flashcards"}
-          onPress={setActiveScreen}
+          onPress={() => setActiveScreen("Flashcards")}
         />
         <NavButton
           icon="checkbox-outline"
           label="Tasks"
           active={activeScreen === "Tasks"}
-          onPress={setActiveScreen}
+          onPress={() => setActiveScreen("Tasks")}
         />
       </View>
 
@@ -1792,15 +1925,40 @@ export default function TimerScreen() {
               </>
             )}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              editable={!isLoading}
-            />
+            <View style={styles.emailInputContainer}>
+              <TextInput
+                style={[styles.input, styles.emailInput]}
+                placeholder="Email"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                editable={!isLoading}
+              />
+              <View style={styles.testButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={handleTestLogin1}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.testButtonText}>1</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={handleTestLogin2}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.testButtonText}>2</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={handleTestLogin3}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.testButtonText}>3</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             <TextInput
               style={styles.input}
               placeholder="Password"
@@ -1855,6 +2013,11 @@ export default function TimerScreen() {
         onToggleSound={setIsSoundOn}
         onToggleVibration={setIsVibrationOn}
         onSelectSound={setSelectedSound}
+        currentTheme={currentTheme}
+        onThemeChange={(themeId: string) => {
+          const theme = getThemeById(themeId);
+          setCurrentTheme(theme);
+        }}
       />
 
       <ProfileModal
@@ -1908,6 +2071,13 @@ export default function TimerScreen() {
           <SubjectsScreen />
         </View>
       </Modal>
+      
+      <WhiteNoiseModal
+        visible={showWhiteNoiseModal}
+        onClose={() => setShowWhiteNoiseModal(false)}
+        selectedWhiteNoise={selectedWhiteNoise}
+        onSelectWhiteNoise={handleWhiteNoiseSelect}
+      />
       
       <TimeTableModal
         visible={showTimeTableModal}
@@ -1982,23 +2152,6 @@ export default function TimerScreen() {
         onClose={() => setShowImageViewer(false)}
       />
 
-      {/* Appearance Modal */}
-      {showAppearanceModal && (
-        <Modal
-          visible={showAppearanceModal}
-          animationType="slide"
-          onRequestClose={() => setShowAppearanceModal(false)}
-        >
-          <AppearanceScreen
-            onClose={() => setShowAppearanceModal(false)}
-            currentThemeId={currentTheme.id}
-            onThemeChange={(themeId) => {
-              const newTheme = getThemeById(themeId);
-              setCurrentTheme(newTheme);
-            }}
-          />
-        </Modal>
-      )}
     </LinearGradient>
   );
 }
@@ -2272,6 +2425,36 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.95)",
     fontSize: 12,
     marginLeft: 4,
+    fontWeight: "700",
+  },
+  // Test login button styles
+  emailInputContainer: {
+    position: "relative",
+    marginBottom: 12,
+  },
+  emailInput: {
+    paddingRight: 120, // Make space for test buttons
+    marginBottom: 0,
+  },
+  testButtonsContainer: {
+    position: "absolute",
+    right: 8,
+    top: "50%",
+    transform: [{ translateY: -12 }],
+    flexDirection: "row",
+    gap: 4,
+  },
+  testButton: {
+    backgroundColor: "#4F46E5",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  testButtonText: {
+    color: "white",
+    fontSize: 12,
     fontWeight: "700",
   },
 });

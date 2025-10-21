@@ -40,6 +40,7 @@ export interface PomodoroNote {
   userId: string;
   imageUrl?: string;
   subjectId?: string; // optional subject assignment
+  doodleData?: string; // JSON string of drawing paths
 }
 
 // --- ACHIEVEMENT TYPES ---

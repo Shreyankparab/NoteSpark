@@ -35,6 +35,7 @@ import {
 import { auth, db } from "../firebase/firebaseConfig";
 import { PomodoroNote, Subject } from "../types";
 import CustomNoteModal from "./modals/CustomNoteModal";
+import DrawingOverlay from "./DrawingOverlay";
 import { aiService } from "../utils/aiService";
 import { uploadToCloudinaryBase64 } from "../utils/imageStorage";
 import { Ionicons } from "@expo/vector-icons";
@@ -81,6 +82,8 @@ const NotesContent: React.FC<NotesContentProps> = ({
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [drawingData, setDrawingData] = useState<string | null>(null);
 
   const handleSummarizeCurrent = async () => {
     if (!selectedNote) return;
@@ -91,18 +94,55 @@ const NotesContent: React.FC<NotesContentProps> = ({
         content,
         type: "summarize",
       });
-      setEditText(summarized);
-      // Persist immediately so it's reflected elsewhere
-      await updateDoc(doc(db, "notes", selectedNote.id), {
-        notes: summarized,
-        aiProcessed: true,
-        processingType: "summarized",
-        aiProvider: aiService.getCurrentProvider(),
-      });
-    } catch (e) {
-      Alert.alert("Error", "Failed to summarize note");
+
+      if (isEditingNote) {
+        setEditText(summarized);
+      } else {
+        setSelectedNote({ ...selectedNote, notes: summarized });
+        // Update in Firestore
+        const noteRef = doc(db, "notes", selectedNote.id);
+        await updateDoc(noteRef, { notes: summarized });
+      }
+    } catch (error) {
+      console.error("Error summarizing:", error);
+      Alert.alert("Error", "Failed to summarize notes");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const toggleDrawingMode = () => {
+    setIsDrawingMode(!isDrawingMode);
+  };
+
+  const handleDrawingChange = (data: string) => {
+    setDrawingData(data || null);
+  };
+
+  const handleSaveDrawing = async () => {
+    if (!selectedNote || !drawingData) return;
+    try {
+      // Update the selected note
+      const updatedNote = { ...selectedNote, doodleData: drawingData };
+      setSelectedNote(updatedNote);
+      
+      // Update in Firestore
+      const noteRef = doc(db, "notes", selectedNote.id);
+      await updateDoc(noteRef, { doodleData: drawingData });
+      
+      // Update local notes array
+      setNotes(prevNotes => 
+        prevNotes.map(note => 
+          note.id === selectedNote.id 
+            ? { ...note, doodleData: drawingData }
+            : note
+        )
+      );
+      
+      console.log("✅ Drawing updated successfully");
+    } catch (error) {
+      console.error("❌ Error updating drawing:", error);
+      Alert.alert("Error", "Failed to save drawing");
     }
   };
 
@@ -631,7 +671,9 @@ const NotesContent: React.FC<NotesContentProps> = ({
                   setEditTitle(note.taskTitle || "Untitled");
                   setEditText(note.notes || "");
                   setEditImageUrl(note.imageUrl || undefined);
+                  setDrawingData(note.doodleData || null);
                   setIsEditingNote(false);
+                  setIsDrawingMode(false);
                 }}
               >
                 <View style={styles.cardRow}>
@@ -659,6 +701,13 @@ const NotesContent: React.FC<NotesContentProps> = ({
                       <Text style={styles.duration}>
                         {formatDuration(note.duration)}
                       </Text>
+                    )}
+                    {/* Doodle indicator */}
+                    {note.doodleData && (
+                      <View style={styles.doodleIndicator}>
+                        <Ionicons name="brush" size={12} color="#FF6B35" />
+                        <Text style={styles.doodleIndicatorText}>Doodle</Text>
+                      </View>
                     )}
                   </View>
                   <View style={styles.cardRight}>
@@ -847,29 +896,30 @@ const NotesContent: React.FC<NotesContentProps> = ({
         </View>
       </Modal>
 
-      {/* Detail Modal */}
+      {/* Note Details Modal */}
       {selectedNote && (
         <Modal
+          visible={!!selectedNote}
           animationType="slide"
-          visible={true}
+          presentationStyle="fullScreen"
           onRequestClose={() => setSelectedNote(null)}
         >
-          <View style={styles.fsContainer}>
-            {/* Header */}
+          <DrawingOverlay
+            isDrawingMode={isDrawingMode}
+            onToggleDrawingMode={toggleDrawingMode}
+            onDrawingChange={handleDrawingChange}
+            initialDrawingData={drawingData}
+          >
+            <View style={styles.fsContainer}>
             <View style={styles.fsHeader}>
-              <TouchableOpacity onPress={() => setSelectedNote(null)}>
-                <Ionicons name="chevron-back" size={26} color="#111827" />
+              <TouchableOpacity
+                onPress={() => setSelectedNote(null)}
+                style={styles.fsCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#111827" />
               </TouchableOpacity>
-              <Text style={styles.fsHeaderTitle} numberOfLines={1}>
-                {editTitle || "Untitled"}
-              </Text>
-              <TouchableOpacity onPress={() => setIsEditingNote((v) => !v)}>
-                <Ionicons
-                  name={isEditingNote ? "close" : "ellipsis-horizontal"}
-                  size={22}
-                  color="#111827"
-                />
-              </TouchableOpacity>
+              <Text style={styles.fsHeaderTitle}>Note Details</Text>
+              <View style={{ width: 24 }} />
             </View>
 
             {/* Content */}
@@ -909,6 +959,8 @@ const NotesContent: React.FC<NotesContentProps> = ({
               ) : (
                 <Text style={styles.fsBodyText}>{editText}</Text>
               )}
+              
+              
               {isEditingNote && (
                 <View style={styles.fsEditRow}>
                   <TouchableOpacity
@@ -1055,6 +1107,13 @@ const NotesContent: React.FC<NotesContentProps> = ({
                     <Text style={styles.bottomIconText}>Summarize</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    onPress={handleSaveDrawing}
+                    style={styles.bottomIconBtn}
+                  >
+                    <Ionicons name="save-outline" size={20} color="#111827" />
+                    <Text style={styles.bottomIconText}>Save Drawing</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
                     onPress={() => Alert.alert("Flashcards", "Coming soon")}
                     style={styles.bottomIconBtn}
                   >
@@ -1065,6 +1124,7 @@ const NotesContent: React.FC<NotesContentProps> = ({
               )}
             </View>
           </View>
+          </DrawingOverlay>
         </Modal>
       )}
 
@@ -1083,6 +1143,7 @@ const NotesContent: React.FC<NotesContentProps> = ({
           {zoomImageUrl ? <ZoomableImage uri={zoomImageUrl} /> : null}
         </GestureHandlerRootView>
       </Modal>
+
     </View>
   );
 };
@@ -1608,6 +1669,42 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  doodleContainer: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  doodleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  doodleIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  doodleIndicatorText: {
+    fontSize: 10,
+    color: '#FF6B35',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  drawingSection: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  fsCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
   },
 });
 

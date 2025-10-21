@@ -81,7 +81,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
         completedAt,
         userId: user.uid,
         imageUrl: imageUrl || '',
-      };
+        };
 
       // Only add subjectId if it exists
       if (subjectId) {
@@ -113,9 +113,9 @@ const NotesModal: React.FC<NotesModalProps> = ({
   };
 
   const handleSkip = () => {
-    setNotes('');
     onClose();
   };
+
 
   const startListening = async () => {
     try {
@@ -339,6 +339,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
                 )}
               </View>
             )}
+
           </ScrollView>
           
           {/* Fixed bottom buttons */}
@@ -350,6 +351,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
             >
               <Text style={styles.skipButtonText}>Skip</Text>
             </TouchableOpacity>
+            
             
             <TouchableOpacity
               style={styles.saveNotesButton}
@@ -368,6 +370,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
           </View>
         </View>
       </KeyboardAvoidingView>
+      
     </Modal>
   );
 };
@@ -529,6 +532,42 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#6b7280',
+  },
+  doodleButton: {
+    flex: 1,
+    backgroundColor: '#FF6B35',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  doodleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'white',
+  },
+  doodleButtonActive: {
+    backgroundColor: '#E55A2B',
+  },
+  doodleIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#10B981',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
   },
   saveNotesButton: {
     flex: 2,
