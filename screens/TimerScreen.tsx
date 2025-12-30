@@ -42,6 +42,7 @@ import {
   setDoc,
   getDoc,
   serverTimestamp,
+  increment,
 } from "firebase/firestore";
 import {
   TIMER_END_TIME_KEY,
@@ -66,6 +67,11 @@ import {
   saveSettings,
   playCompletionSound,
 } from "../utils";
+import {
+  checkStreakAchievements,
+  checkFocusTimeAchievements,
+} from "../utils/achievements";
+import { showMultipleAchievementNotifications } from "../utils/achievementNotification";
 import { signInWithGoogle, getGoogleSetupHelp } from "../utils/googleAuth";
 import { DEFAULT_THEME, getThemeById } from "../constants/themes";
 import TimerContent from "../components/TimerContent";
@@ -85,6 +91,9 @@ import AddCustomTaskModal from "../components/modals/AddCustomTaskModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
 import FlipDeviceOverlay from "../components/FlipDeviceOverlay";
 import WhiteNoiseModal from "../components/modals/WhiteNoiseModal";
+// TimerConfigModal replaced by TaskInputModal
+import BreakPromptModal from "../components/modals/BreakPromptModal";
+import PostSessionModal from "../components/modals/PostSessionModal";
 
 // Image Viewer Modal Component
 const ImageViewerModal = ({
@@ -196,8 +205,8 @@ const updateStreak = async (userId: string): Promise<number> => {
     const newActiveTimestamp = serverTimestamp();
 
     if (!userSnap.exists()) {
-      await setDoc(userRef, { 
-        streak: 1, 
+      await setDoc(userRef, {
+        streak: 1,
         lastActive: newActiveTimestamp,
         activeDays: [todayStr],
         streakStartDate: todayStr
@@ -216,8 +225,8 @@ const updateStreak = async (userId: string): Promise<number> => {
     }
 
     if (!lastActive) {
-      await updateDoc(userRef, { 
-        streak: 1, 
+      await updateDoc(userRef, {
+        streak: 1,
         lastActive: newActiveTimestamp,
         activeDays: [todayStr],
         streakStartDate: todayStr
@@ -239,8 +248,8 @@ const updateStreak = async (userId: string): Promise<number> => {
       streakStartDate = todayStr;
     }
 
-    await updateDoc(userRef, { 
-      streak, 
+    await updateDoc(userRef, {
+      streak,
       lastActive: newActiveTimestamp,
       activeDays,
       streakStartDate
@@ -297,6 +306,8 @@ export default function TimerScreen() {
     completedAt: number;
     imageUrl?: string;
     subjectId?: string;
+    subSubjectId?: string;
+    breakDuration?: number;
   } | null>(null);
   const [isLogin, setIsLogin] = useState(true);
   const [streak, setStreak] = useState(0);
@@ -308,6 +319,24 @@ export default function TimerScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+
+  // --- Enhanced Pomodoro State ---
+  const [timerMode, setTimerMode] = useState<"focus" | "break" | "idle">("idle");
+  const [breakDuration, setBreakDuration] = useState(5 * 60); // Default 5 min
+  const [isBreakEnabled, setIsBreakEnabled] = useState(false);
+  const [showTimerConfigModal, setShowTimerConfigModal] = useState(false);
+  const [showBreakPromptModal, setShowBreakPromptModal] = useState(false);
+  const [showPostSessionModal, setShowPostSessionModal] = useState(false);
+
+  // Store config for restarting session
+  const [lastTimerConfig, setLastTimerConfig] = useState<{
+    focusMinutes: number;
+    breakMinutes: number | null;
+  } | null>(null);
+
+  // --- Session Accumulator State ---
+  const [sessionFocusDuration, setSessionFocusDuration] = useState(0); // in minutes
+  const [sessionBreakDuration, setSessionBreakDuration] = useState(0); // in minutes
 
   // --- Task State (from Firestore) ---
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -342,11 +371,11 @@ export default function TimerScreen() {
           // Timer finished while app was backgrounded
           setSeconds(0);
           setIsActive(false);
-          
+
           // Always trigger completion if timer was active
           console.log("⏰ Timer completed in background, triggering completion...");
           await handleTimerCompletion();
-          
+
           // Clean up storage
           await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
           await AsyncStorage.setItem(TIMER_STATUS_KEY, "idle");
@@ -363,12 +392,12 @@ export default function TimerScreen() {
   // --- Load Settings & Setup Firestore Listeners ---
   useEffect(() => {
     const initializeSettings = async () => {
-      const settings = await loadSettings();
-      setInitialTime((settings?.duration || DEFAULT_MINUTES) * 60);
-      setIsSoundOn(settings?.isSoundOn ?? true);
-      setIsVibrationOn(settings?.isVibrationOn ?? true);
-      setSelectedSound(settings?.selectedSound || SOUND_PRESETS[0]);
-      
+      const loadedSettings = await loadSettings();
+      setInitialTime((loadedSettings?.duration || DEFAULT_MINUTES) * 60);
+      setIsSoundOn(loadedSettings?.isSoundOn ?? true);
+      setIsVibrationOn(loadedSettings?.isVibrationOn ?? true);
+      setSelectedSound(loadedSettings?.selectedSound || SOUND_PRESETS[0]);
+
       // Load saved theme
       try {
         const savedThemeId = await AsyncStorage.getItem('selectedTheme');
@@ -384,12 +413,12 @@ export default function TimerScreen() {
 
     initializeSettings();
     setupNotifications();
-    
+
     // Handle notification responses (when user taps notification)
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       console.log('📱 Notification tapped:', data);
-      
+
       if (data.type === 'timer_complete') {
         // User tapped the completion notification
         console.log('⏰ User tapped timer completion notification');
@@ -639,125 +668,55 @@ export default function TimerScreen() {
   }, [initialTime, isSoundOn, isVibrationOn, selectedSound]);
 
   // --- Core Timer Functionality ---
+  // --- Core Timer Functionality ---
   const handleTimerCompletion = async () => {
-    if (isActive) setIsActive(false);
-    AsyncStorage.removeItem(TIMER_END_TIME_KEY).catch(() => {});
-    AsyncStorage.removeItem(TIMER_STATUS_KEY).catch(() => {});
+    setIsActive(false);
+    await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
+    await AsyncStorage.removeItem(TIMER_STATUS_KEY);
     cancelTimerNotification();
 
-    const completedAt = Date.now();
-    const taskTitle = currentTask?.title || "Pomodoro Session";
-    const duration = initialTime / 60; // store as minutes
-    const taskSubjectId = currentTask?.subjectId; // Capture subjectId early
-    
-    console.log('🎯 Timer completed with task:', { 
-      taskTitle, 
-      subjectId: taskSubjectId,
-      hasCurrentTask: !!currentTask 
-    });
-
-    // Do NOT upload anything yet. We will open the image modal and let the
-    // user choose an image, then perform upload from there to avoid Blob issues.
-
-    // Mark current task as completed in Firestore
-    if (currentTask && user) {
-      try {
-        const taskRef = doc(db, "tasks", currentTask.id);
-        await updateDoc(taskRef, {
-          status: "completed",
-          completedAt,
-        });
-        console.log("✅ Task marked as completed in Firestore");
-
-        // Update local state immediately for better UX
-        setCurrentTask((prev) =>
-          prev ? { ...prev, status: "completed", completedAt } : null
-        );
-
-        // Calculate total completed tasks for achievement checking
-        const totalCompletedTasks = tasks.filter(t => t.status === "completed").length + 1; // +1 for the current task
-
-        // Check for task completion achievements
-        try {
-          const { checkTasksCompletedAchievements } = require("../utils/achievements");
-          const { showMultipleAchievementNotifications } = require("../utils/achievementNotification");
-
-          const newTaskAchievements = await checkTasksCompletedAchievements(
-            user.uid,
-            totalCompletedTasks
-          );
-
-          if (newTaskAchievements.length > 0) {
-            console.log(`🏆 Showing ${newTaskAchievements.length} new task achievements`);
-            await showMultipleAchievementNotifications(newTaskAchievements);
-          }
-        } catch (error) {
-          console.error("❌ Failed to check task achievements:", error);
-        }
-
-        // Clear current task after a brief delay to show completion status
-        setTimeout(() => {
-          setCurrentTask(null);
-        }, 1000);
-      } catch (error) {
-        console.error("❌ Failed to update task in Firestore:", error);
-      }
-    }
-
-    // Trigger sensory feedback
+    // Play completion sound using user's selected sound
     if (isSoundOn) {
-      playCompletionSound(selectedSound);
-    }
-    if (isVibrationOn) {
-      Vibration.vibrate([1000, 500, 1000, 500, 1000]);
-    }
-
-    // Update streak
-    if (user) {
-      const newStreak = await updateStreak(user.uid);
-      setStreak(newStreak);
-      
-      // Check for achievements after streak update
       try {
-        const {
-          checkStreakAchievements,
-          checkFocusTimeAchievements,
-        } = require("../utils/achievements");
-        const {
-          showMultipleAchievementNotifications,
-        } = require("../utils/achievementNotification");
-
-        // Check for streak and focus time achievements
-        const newStreakAchievements = await checkStreakAchievements(user.uid, newStreak);
-        const newFocusAchievements = await checkFocusTimeAchievements(
-          user.uid,
-          totalFocusMinutes || 0
-        );
-
-        // Combine all new achievements
-        const allNewAchievements = [...newStreakAchievements, ...newFocusAchievements];
-
-        if (allNewAchievements.length > 0) {
-          console.log(`🏆 Showing ${allNewAchievements.length} new achievements after session completion`);
-          showMultipleAchievementNotifications(allNewAchievements);
-        }
-      } catch (err) {
-        console.error("Failed to check achievements after session completion:", err);
+        await playCompletionSound(selectedSound);
+      } catch (error) {
+        console.error("Failed to play sound", error);
       }
     }
 
-    // Save session data for modals
-    setCompletedSession({
-      taskTitle,
-      duration,
-      completedAt,
-      subjectId: taskSubjectId,
-    });
-    
-    console.log('💾 Saved completed session with subjectId:', taskSubjectId);
+    if (timerMode === "focus") {
+      // Focus session complete
+      const sessionMinutes = Math.floor(initialTime / 60);
+      setSessionFocusDuration((prev) => prev + sessionMinutes);
+      setTotalFocusMinutes((prev) => (prev || 0) + sessionMinutes);
 
-    // Show image modal first
-    setShowImageModal(true);
+      if (user) {
+        try {
+          const userRef = doc(db, "users", user.uid);
+          await setDoc(userRef, {
+            totalFocusMinutes: increment(sessionMinutes),
+            lastFocusDate: serverTimestamp()
+          }, { merge: true });
+        } catch (e) { console.error(e); }
+      }
+
+      // Navigate to Break or directly end session
+      if (isBreakEnabled) {
+        setShowBreakPromptModal(true);
+      } else {
+        // Breaks disabled - go directly to end session flow (skip PostSessionModal)
+        handleEndSession();
+      }
+
+    } else if (timerMode === "break") {
+      // Break session complete
+      const breakMinutes = Math.floor(initialTime / 60);
+      setSessionBreakDuration((prev) => prev + breakMinutes);
+      setShowPostSessionModal(true);
+    } else {
+      // Fallback or Unknown state
+      setShowPostSessionModal(true);
+    }
   };
 
   const handleAddOneMinute = async () => {
@@ -845,12 +804,12 @@ export default function TimerScreen() {
         setShowAuthModal(false);
         const updatedStreak = await updateStreak(currentUser.uid);
         setStreak(updatedStreak);
-        
+
         // Migrate old achievements to composite ID format (one-time operation)
         try {
           const { migrateUserAchievements, needsMigration } = require("../utils/migrateAchievements");
           const needsUpdate = await needsMigration(currentUser.uid);
-          
+
           if (needsUpdate) {
             console.log("🔄 Migrating achievements to new format...");
             const result = await migrateUserAchievements(currentUser.uid);
@@ -859,7 +818,7 @@ export default function TimerScreen() {
         } catch (err) {
           console.error("Failed to migrate achievements:", err);
         }
-        
+
         // Clean up duplicate achievements (silent operation)
         try {
           const { cleanupDuplicateAchievements } = require("../utils/achievements");
@@ -870,7 +829,7 @@ export default function TimerScreen() {
         } catch (err) {
           console.error("Failed to cleanup duplicate achievements:", err);
         }
-        
+
         // Silently check for achievements on login (no notifications)
         // Notifications will only show when user actually earns new achievements during app usage
         try {
@@ -1011,15 +970,15 @@ export default function TimerScreen() {
       }
 
       setSelectedWhiteNoise(whiteNoise);
-      
+
       // Save preference
       await AsyncStorage.setItem('selectedWhiteNoise', whiteNoise);
-      
+
       // If timer is active and not "None", start playing
       if (isActive && whiteNoise !== "None") {
         await playWhiteNoise(whiteNoise);
       }
-      
+
       console.log(`✅ White noise selected: ${whiteNoise}`);
     } catch (error) {
       console.error('❌ Failed to select white noise:', error);
@@ -1029,22 +988,22 @@ export default function TimerScreen() {
   // Play white noise function
   const playWhiteNoise = async (whiteNoise: WhiteNoiseType) => {
     if (whiteNoise === "None") return;
-    
+
     try {
       const soundFile = WHITE_NOISE_SOUND_MAP[whiteNoise];
       if (!soundFile) {
         console.log(`⚠️ No sound file found for: ${whiteNoise}`);
         return;
       }
-      
+
       const { sound } = await Audio.Sound.createAsync(
         soundFile,
-        { 
+        {
           isLooping: true,
           volume: 0.3 // Lower volume for background noise
         }
       );
-      
+
       await sound.playAsync();
       setWhiteNoiseSound(sound);
       console.log(`🎵 Playing white noise: ${whiteNoise}`);
@@ -1079,7 +1038,7 @@ export default function TimerScreen() {
         console.error('❌ Failed to load white noise preference:', error);
       }
     };
-    
+
     loadWhiteNoisePreference();
   }, []);
 
@@ -1090,7 +1049,7 @@ export default function TimerScreen() {
     } else {
       stopWhiteNoise();
     }
-    
+
     // Cleanup on unmount
     return () => {
       stopWhiteNoise();
@@ -1110,6 +1069,171 @@ export default function TimerScreen() {
     }
   };
 
+  // --- Enhanced Pomodoro Handlers ---
+
+  const handleConfigStart = async (focusMinutes: number, breakMinutes: number | null, shouldResetSession: boolean = true) => {
+
+    if (shouldResetSession) {
+      setSessionFocusDuration(0);
+      setSessionBreakDuration(0);
+    }
+
+    const focusSeconds = focusMinutes * 60;
+    setLastTimerConfig({ focusMinutes, breakMinutes });
+    setInitialTime(focusSeconds);
+    setSeconds(focusSeconds);
+
+    if (breakMinutes) {
+      setIsBreakEnabled(true);
+      setBreakDuration(breakMinutes * 60);
+    } else {
+      setIsBreakEnabled(false);
+    }
+
+    setTimerMode("focus");
+
+    // Explicitly start the timer logic here to avoid recursion issues
+    setIsActive(true);
+    const endTime = Date.now() + focusSeconds * 1000;
+    await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
+    await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+
+    // Notification setup
+    const notificationId = await scheduleTimerCompletionNotification(
+      focusSeconds,
+      currentTask?.title || "Focus Session"
+    );
+    setCompletionNotificationId(notificationId);
+
+    if (currentTask) {
+      // Update task to active if existing
+      try {
+        const taskRef = doc(db, "tasks", currentTask.id);
+        await updateDoc(taskRef, { status: "active" });
+        setCurrentTask((prev) => prev ? { ...prev, status: "active" } : null);
+      } catch (e) { console.error(e); }
+    }
+  };
+
+  const handleStartBreak = async () => {
+    setShowBreakPromptModal(false);
+    setTimerMode("break");
+    setInitialTime(breakDuration); // Set ring scale
+    setSeconds(breakDuration);
+
+    setIsActive(true);
+    const endTime = Date.now() + breakDuration * 1000;
+    await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
+    await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+
+    // Break Notification
+    const notificationId = await scheduleTimerCompletionNotification(
+      breakDuration,
+      "Break Time"
+    );
+    setCompletionNotificationId(notificationId);
+  };
+
+  const handleSkipBreak = () => {
+    setShowBreakPromptModal(false);
+    setShowPostSessionModal(true);
+  };
+
+  const handleEndSession = async () => {
+    setShowPostSessionModal(false);
+    setTimerMode("idle");
+    setIsActive(false);
+
+    await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
+    await AsyncStorage.removeItem(TIMER_STATUS_KEY);
+    cancelTimerNotification();
+    if (completionNotificationId) await cancelTimerCompletionNotification(completionNotificationId);
+
+    // --- Task Completion & Media Flow ---
+    const completedAt = Date.now();
+    // Use stored duration or calculate based on session. Ideally we track total focus time.
+    // For now, we'll use the last focus session's intended duration or accumulated?
+    // User wants to log the "Task". 
+    const taskTitle = currentTask?.title || "Pomodoro Session";
+    // ADDED: Use accumulated session duration plus the last completed interval if it wasn't added yet (which it is in handleTimerCompletion)
+    // Wait, handleTimerCompletion adds to the state.
+    // If user ends EARLY, we might want to add the partial time?
+    // For now, let's assume they only end after a solid block or we just take what's in the accumulator.
+    // But if they press "End Session" from the post-session modal, the last block IS finished and added.
+    const duration = sessionFocusDuration > 0 ? sessionFocusDuration : initialTime / 60;
+    const taskSubjectId = currentTask?.subjectId;
+
+    if (currentTask && user) {
+      try {
+        const taskRef = doc(db, "tasks", currentTask.id);
+        await updateDoc(taskRef, {
+          status: "completed",
+          completedAt,
+          duration: duration, // Update with actual accumulated duration
+          breakDuration: sessionBreakDuration, // Save total break time too if needed
+        });
+        console.log("✅ Task marked as completed in Firestore");
+
+        setCurrentTask(null);
+
+        // Update Streak Logic (simplified from previous)
+        const today = new Date().toDateString();
+        const lastDate = await AsyncStorage.getItem("lastStreakDate");
+        let newStreak = streak;
+
+        if (lastDate !== today) {
+          newStreak = streak + 1;
+          setStreak(newStreak);
+          await AsyncStorage.setItem("lastStreakDate", today);
+
+          const userRef = doc(db, "users", user.uid);
+          await setDoc(userRef, { streak: newStreak, lastStreakDate: serverTimestamp() }, { merge: true });
+        }
+
+        // Check Achievements
+        try {
+          const newStreakAchievements = await checkStreakAchievements(user.uid, newStreak);
+          const newFocusAchievements = await checkFocusTimeAchievements(user.uid, totalFocusMinutes || 0);
+          const allNew = [...newStreakAchievements, ...newFocusAchievements];
+          if (allNew.length > 0) {
+            showMultipleAchievementNotifications(allNew);
+          }
+        } catch (e) { console.error(e); }
+
+      } catch (error) {
+        console.error("Failed to mark task complete:", error);
+      }
+    }
+
+    // Save session data for modals (clear old imageUrl to force fresh selection)
+    setCompletedSession({
+      taskTitle,
+      duration,
+      completedAt,
+      subjectId: taskSubjectId,
+      breakDuration: sessionBreakDuration,
+      imageUrl: undefined, // Clear old image to show fresh image selection
+    });
+
+    // Trigger Image Modal Flow
+    setShowImageModal(true);
+  };
+
+  const handleRestartSession = async () => {
+    setShowPostSessionModal(false);
+    if (lastTimerConfig) {
+      // Restarting means continuing the "session" in terms of "sitting down to work", but 
+      // typically "Start Another" implies a new interval.
+      // However, the user asked to total multiple pomodoros in single sessions.
+      // So we should NOT reset the session accumulators here if we consider it one big session.
+      // "Start Another" -> implies adding more time to the current flow.
+      await handleConfigStart(lastTimerConfig.focusMinutes, lastTimerConfig.breakMinutes, false);
+    } else {
+      // Fallback to default if no config found
+      await handleConfigStart(25, 5, false);
+    }
+  };
+
   const handleStartPause = async () => {
     if (!user) {
       setShowAuthModal(true);
@@ -1120,14 +1244,14 @@ export default function TimerScreen() {
       return;
     }
 
-    const newActiveState = !isActive;
-
-    // If starting timer, show task input modal
-    if (newActiveState && !currentTask) {
+    // New Flow: If starting fresh (idle) and not active, open config (TaskInputModal now handles config)
+    if (!isActive && timerMode === "idle") {
       setShowTaskInputModal(true);
       return;
     }
 
+    // Default toggle behavior for existing sessions (Pause/Resume)
+    const newActiveState = !isActive;
     setIsActive(newActiveState);
 
     if (newActiveState) {
@@ -1135,24 +1259,17 @@ export default function TimerScreen() {
       await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
       await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
 
-      // Schedule completion notification
       const notificationId = await scheduleTimerCompletionNotification(
         seconds,
-        currentTask?.title
+        timerMode === "break" ? "Break Time" : (currentTask?.title || "Focus Session")
       );
       setCompletionNotificationId(notificationId);
 
-      // Update current task status to active in Firestore
-      if (currentTask) {
+      if (currentTask && timerMode === "focus") {
         try {
           const taskRef = doc(db, "tasks", currentTask.id);
           await updateDoc(taskRef, { status: "active" });
-          console.log("✅ Task status updated to active");
-
-          // Update local state immediately for better UX
-          setCurrentTask((prev) =>
-            prev ? { ...prev, status: "active" } : null
-          );
+          setCurrentTask((prev) => (prev ? { ...prev, status: "active" } : null));
         } catch (error) {
           console.error("❌ Failed to update task status:", error);
         }
@@ -1161,22 +1278,14 @@ export default function TimerScreen() {
       await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
       await AsyncStorage.setItem(TIMER_STATUS_KEY, "paused");
       cancelTimerNotification();
-      
-      // Cancel completion notification when paused
       await cancelTimerCompletionNotification(completionNotificationId);
       setCompletionNotificationId(null);
 
-      // Update current task status to pending in Firestore
-      if (currentTask) {
+      if (currentTask && timerMode === "focus") {
         try {
           const taskRef = doc(db, "tasks", currentTask.id);
           await updateDoc(taskRef, { status: "pending" });
-          console.log("✅ Task status updated to pending");
-
-          // Update local state immediately for better UX
-          setCurrentTask((prev) =>
-            prev ? { ...prev, status: "pending" } : null
-          );
+          setCurrentTask((prev) => (prev ? { ...prev, status: "pending" } : null));
         } catch (error) {
           console.error("❌ Failed to update task status:", error);
         }
@@ -1184,33 +1293,39 @@ export default function TimerScreen() {
     }
   };
 
-  const handleTaskSave = async (taskTitle: string, subjectId?: string) => {
+  const handleTaskSave = async (
+    taskTitle: string,
+    subjectId: string | undefined,
+    focusMinutes: number,
+    breakMinutes: number | null,
+    subSubjectId?: string | undefined
+  ) => {
     setShowTaskInputModal(false);
 
+    // If no task title, just start the timer with config
     if (!taskTitle) {
-      // User skipped, start timer without task
-      setIsActive(true);
-      const endTime = Date.now() + seconds * 1000;
-      await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
-      await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
+      await handleConfigStart(focusMinutes, breakMinutes, true);
       return;
     }
 
+    // If user provided task details
     if (!user) return;
 
-    // Create new task in Firestore with "active" status immediately
-    // This ensures flip timeout will always find the task in "active" state
+    // 1. Create task in Firestore
     const newTask: any = {
       title: taskTitle,
-      duration: initialTime / 60,
+      duration: focusMinutes, // Use the configured duration
       createdAt: Date.now(),
-      status: "active", // Start as active since timer starts immediately
+      status: "active",
       userId: user.uid,
     };
 
-    // Only add subjectId if it exists (Firebase doesn't accept undefined)
     if (subjectId) {
       newTask.subjectId = subjectId;
+    }
+
+    if (subSubjectId) {
+      newTask.subSubjectId = subSubjectId;
     }
 
     try {
@@ -1219,22 +1334,18 @@ export default function TimerScreen() {
       await setDoc(docRef, newTask);
       console.log("✅ Task saved to Firestore with active status");
 
-      // Create the full task object with the generated ID
       const fullTask: Task = {
         ...newTask,
         id: docRef.id,
       };
 
-      // Set current task immediately with active status
       setCurrentTask(fullTask);
 
-      // Start timer immediately
-      setIsActive(true);
-      const endTime = Date.now() + seconds * 1000;
-      await AsyncStorage.setItem(TIMER_END_TIME_KEY, String(endTime));
-      await AsyncStorage.setItem(TIMER_STATUS_KEY, "active");
-      
-      console.log("✅ Timer started with task in active status");
+      // 2. Start the Timer Config Flow with these settings
+      // This will set timerMode='focus', set seconds, start timer, etc.
+      // New task starts a new fresh session tracking
+      await handleConfigStart(focusMinutes, breakMinutes, true);
+
     } catch (error) {
       console.error("❌ Failed to save task to Firestore:", error);
       Alert.alert("Error", "Failed to save task. Please try again.");
@@ -1308,7 +1419,7 @@ export default function TimerScreen() {
       const docRef = doc(tasksRef);
       await setDoc(docRef, newTask);
       console.log("✅ Custom task added with pending status" + (subjectId ? " and assigned to subject" : ""));
-      
+
       Alert.alert("Success", "Task added! Use the play button to start it.");
     } catch (error) {
       console.error("❌ Failed to add custom task:", error);
@@ -1319,7 +1430,7 @@ export default function TimerScreen() {
   // Handler to play a pending task
   const handlePlayTask = async (task: Task) => {
     if (!user) return;
-    
+
     // Check if there's already an active task
     if (currentTask && currentTask.status === "active") {
       Alert.alert(
@@ -1332,7 +1443,7 @@ export default function TimerScreen() {
     try {
       // Set this task as current and update to active
       setCurrentTask({ ...task, status: "active" });
-      
+
       // Update task status in Firestore
       const taskRef = doc(db, "tasks", task.id);
       await updateDoc(taskRef, { status: "active" });
@@ -1358,7 +1469,7 @@ export default function TimerScreen() {
 
       // Switch to Timer screen
       setActiveScreen("Timer");
-      
+
       console.log(`✅ Started task: ${task.title} (${task.duration} min)`);
     } catch (error) {
       console.error("❌ Failed to start task:", error);
@@ -1369,7 +1480,7 @@ export default function TimerScreen() {
   // Handler to play a completed task again - shows dialog with Edit/Play options
   const handlePlayAgain = async (task: Task) => {
     if (!user) return;
-    
+
     // Check if there's already an active task
     if (currentTask && currentTask.status === "active") {
       Alert.alert(
@@ -1438,7 +1549,7 @@ export default function TimerScreen() {
 
               // Switch to Timer screen
               setActiveScreen("Timer");
-              
+
               console.log(`✅ Restarted task: ${task.title}`);
             } catch (error) {
               console.error("❌ Failed to restart task:", error);
@@ -1465,7 +1576,7 @@ export default function TimerScreen() {
   // Handler to edit and play (for play again with edit)
   const handleEditAndPlay = (task: Task) => {
     if (!user) return;
-    
+
     // Check if there's already an active task
     if (currentTask && currentTask.status === "active") {
       Alert.alert(
@@ -1474,7 +1585,7 @@ export default function TimerScreen() {
       );
       return;
     }
-    
+
     setTaskToEdit(task);
     setIsEditForPlayAgain(true);
     setShowEditTaskModal(true);
@@ -1532,14 +1643,14 @@ export default function TimerScreen() {
 
         // Switch to Timer screen
         setActiveScreen("Timer");
-        
+
         console.log(`✅ Started new task with edited name: ${newTitle}`);
       } else {
         // Regular edit - update existing task
         const taskRef = doc(db, "tasks", taskToEdit.id);
         await updateDoc(taskRef, { title: newTitle });
         console.log("✅ Task title updated");
-        
+
         // Update current task if it's the one being edited
         if (currentTask?.id === taskToEdit.id) {
           setCurrentTask({ ...currentTask, title: newTitle });
@@ -1579,7 +1690,7 @@ export default function TimerScreen() {
       await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
       await AsyncStorage.removeItem(TIMER_STATUS_KEY);
       cancelTimerNotification();
-      
+
       // Cancel completion notification
       await cancelTimerCompletionNotification(completionNotificationId);
       setCompletionNotificationId(null);
@@ -1602,11 +1713,12 @@ export default function TimerScreen() {
 
   const handleReset = async () => {
     setIsActive(false);
+    setTimerMode("idle"); // Reset timer mode so modal shows again
     setSeconds(initialTime);
     await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
     await AsyncStorage.removeItem(TIMER_STATUS_KEY);
     cancelTimerNotification();
-    
+
     // Cancel completion notification on reset
     await cancelTimerCompletionNotification(completionNotificationId);
     setCompletionNotificationId(null);
@@ -1632,14 +1744,14 @@ export default function TimerScreen() {
 
   const handleFlipTimeout = async () => {
     console.log("⚠️ Flip timeout triggered - abandoning task");
-    
+
     // Stop the timer
     setIsActive(false);
     setSeconds(initialTime);
     await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
     await AsyncStorage.removeItem(TIMER_STATUS_KEY);
     cancelTimerNotification();
-    
+
     // Cancel completion notification
     await cancelTimerCompletionNotification(completionNotificationId);
     setCompletionNotificationId(null);
@@ -1648,14 +1760,14 @@ export default function TimerScreen() {
     if (currentTask && user) {
       try {
         const taskRef = doc(db, "tasks", currentTask.id);
-        
+
         // Get current task status for logging
         const taskDoc = await getDoc(taskRef);
         const currentStatus = taskDoc.exists() ? taskDoc.data()?.status : "unknown";
         console.log(`⚠️ Abandoning task with current status: ${currentStatus}`);
-        
+
         // Update to abandoned regardless of current status
-        await updateDoc(taskRef, { 
+        await updateDoc(taskRef, {
           status: "abandoned",
           abandonedAt: Date.now()
         });
@@ -1663,7 +1775,7 @@ export default function TimerScreen() {
 
         // Update local state
         setCurrentTask(null);
-        
+
         // Show alert to user
         Alert.alert(
           "Session Abandoned",
@@ -1753,7 +1865,7 @@ export default function TimerScreen() {
   };
 
   return (
-    <LinearGradient 
+    <LinearGradient
       colors={currentTheme.colors as any}
       start={currentTheme.gradientStart || { x: 0, y: 0 }}
       end={currentTheme.gradientEnd || { x: 1, y: 1 }}
@@ -1846,7 +1958,7 @@ export default function TimerScreen() {
         ]}
       >
         {renderContent()}
-        
+
         {/* Flip Device Overlay - Only show on Timer screen */}
         {activeScreen === "Timer" && (
           <FlipDeviceOverlay
@@ -1869,19 +1981,37 @@ export default function TimerScreen() {
           icon="document-text-outline"
           label="Notes"
           active={activeScreen === "Notes"}
-          onPress={() => setActiveScreen("Notes")}
+          onPress={() => {
+            if (isActive && timerMode === "focus") {
+              Alert.alert("Focus Mode", "Notes are disabled until the session ends.");
+              return;
+            }
+            setActiveScreen("Notes");
+          }}
         />
         <NavButton
           icon="flash-outline"
           label="Flashcards"
           active={activeScreen === "Flashcards"}
-          onPress={() => setActiveScreen("Flashcards")}
+          onPress={() => {
+            if (isActive && timerMode === "focus") {
+              Alert.alert("Focus Mode", "Flashcards are disabled until the session ends.");
+              return;
+            }
+            setActiveScreen("Flashcards");
+          }}
         />
         <NavButton
           icon="checkbox-outline"
           label="Tasks"
           active={activeScreen === "Tasks"}
-          onPress={() => setActiveScreen("Tasks")}
+          onPress={() => {
+            if (isActive && timerMode === "focus") {
+              Alert.alert("Focus Mode", "Task management is disabled until the session ends.");
+              return;
+            }
+            setActiveScreen("Tasks");
+          }}
         />
       </View>
 
@@ -2043,8 +2173,8 @@ export default function TimerScreen() {
         presentationStyle="pageSheet"
       >
         <View style={{ flex: 1 }}>
-          <View style={{ 
-            flexDirection: 'row', 
+          <View style={{
+            flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
             paddingHorizontal: 16,
@@ -2071,14 +2201,14 @@ export default function TimerScreen() {
           <SubjectsScreen />
         </View>
       </Modal>
-      
+
       <WhiteNoiseModal
         visible={showWhiteNoiseModal}
         onClose={() => setShowWhiteNoiseModal(false)}
         selectedWhiteNoise={selectedWhiteNoise}
         onSelectWhiteNoise={handleWhiteNoiseSelect}
       />
-      
+
       <TimeTableModal
         visible={showTimeTableModal}
         onClose={() => setShowTimeTableModal(false)}
@@ -2098,6 +2228,7 @@ export default function TimerScreen() {
         soundPresets={SOUND_PRESETS}
         isFlipDeviceOn={isFlipDeviceOn}
         onToggleFlipDevice={setIsFlipDeviceOn}
+        initialFocusMinutes={initialTime / 60}
       />
 
       <AddCustomTaskModal
@@ -2126,6 +2257,8 @@ export default function TimerScreen() {
         completedAt={completedSession?.completedAt || Date.now()}
         imageUrl={completedSession?.imageUrl}
         subjectId={completedSession?.subjectId}
+        subSubjectId={completedSession?.subSubjectId}
+        breakDuration={completedSession?.breakDuration}
       />
 
       <ImageCaptureModal
@@ -2152,6 +2285,22 @@ export default function TimerScreen() {
         onClose={() => setShowImageViewer(false)}
       />
 
+      {/* Enhanced Pomodoro Modals */}
+      {/* Enhanced Pomodoro Modals */}
+      {/* TimerConfigModal removed/replaced by TaskInputModal */}
+
+      <BreakPromptModal
+        visible={showBreakPromptModal}
+        onStartBreak={handleStartBreak}
+        onSkipBreak={handleSkipBreak}
+        breakDuration={breakDuration / 60}
+      />
+
+      <PostSessionModal
+        visible={showPostSessionModal}
+        onStartAnother={handleRestartSession}
+        onEndSession={handleEndSession}
+      />
     </LinearGradient>
   );
 }

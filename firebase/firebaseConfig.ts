@@ -1,6 +1,6 @@
 // firebase/firebaseConfig.ts
 import { initializeApp } from "firebase/app";
-import { 
+import {
   getAuth,
   GoogleAuthProvider,
   browserLocalPersistence,
@@ -15,7 +15,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDS3nKSjG9S46vzTayEZz1fbda8AFtAAPc",
   authDomain: "notespark-new.firebaseapp.com",
   projectId: "notespark-new",
-  storageBucket: "notespark-new.appspot.com",
+  storageBucket: "notespark-new.firebasestorage.app", // Fixed: was .appspot.com
   messagingSenderId: "189308470391",
   appId: "1:189308470391:web:cb678aec406cce9abf7272",
 };

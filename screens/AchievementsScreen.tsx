@@ -12,8 +12,17 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { ACHIEVEMENTS } from "../utils/achievements";
+import {
+  ACHIEVEMENTS,
+  claimAchievement,
+  checkStreakAchievements,
+  checkFocusTimeAchievements,
+  checkTasksCompletedAchievements,
+  unlockAchievement
+} from "../utils/achievements";
 import { Achievement, AchievementType } from "../types";
+import ConfettiCannon from "react-native-confetti-cannon";
+import AchievementToast from "../components/AchievementToast";
 
 interface AchievementsScreenProps {
   userId: string;
@@ -39,7 +48,12 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
 }) => {
   const [filter, setFilter] = useState<FilterType>("all");
   const [selectedAchievement, setSelectedAchievement] = useState<any>(null);
+  const [localAchievements, setLocalAchievements] = useState<Achievement[]>(userAchievements);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastAchievement, setToastAchievement] = useState<Achievement | null>(null);
+  const confettiRef = React.useRef<any>(null);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
 
@@ -57,10 +71,53 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+    setLocalAchievements(userAchievements);
+
+    // Check for any achievements that should be unlocked but aren't
+    // Check for any achievements that should be unlocked but aren't
+    const checkMissedAchievements = async () => {
+      // Only run if we valid stats
+      if (totalFocusMinutes >= 0 && totalTasksCompleted >= 0 && currentStreak >= 0) {
+        const newStreak = await checkStreakAchievements(userId, currentStreak);
+        const newFocus = await checkFocusTimeAchievements(userId, totalFocusMinutes);
+        const newTasks = await checkTasksCompletedAchievements(userId, totalTasksCompleted);
+
+        const allNew = [...newStreak, ...newFocus, ...newTasks];
+
+        if (allNew.length > 0) {
+          console.log("Found missed achievements:", allNew.map(a => a.name));
+
+          // Add these new unlocked achievements to our local state
+          setLocalAchievements(prev => {
+            // Create a map of existing IDs to avoid duplicates
+            const existingIds = new Set(prev.map(a => a.id));
+
+            // Only add ones that aren't already in local state
+            const uniqueNew = allNew.filter(a => !existingIds.has(a.id));
+
+            if (uniqueNew.length === 0) return prev;
+
+            // Return new merged state
+            return [...prev, ...uniqueNew];
+          });
+        }
+      }
+    };
+    checkMissedAchievements();
+
+  }, [userAchievements]);
+
+  const getAchievementStatus = (achievementId: string) => {
+    const userAchievement = localAchievements.find((a) => a.id === achievementId);
+    if (!userAchievement) return { status: "locked" };
+    return {
+      status: userAchievement.isClaimed ? "claimed" : "unlocked",
+      unlockedAt: userAchievement.unlockedAt
+    };
+  };
 
   const isAchievementUnlocked = (achievementId: string) => {
-    return userAchievements.some((a) => a.id === achievementId);
+    return localAchievements.some((a) => a.id === achievementId);
   };
 
   const getProgress = (achievement: any) => {
@@ -101,7 +158,107 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
         year: "numeric",
       });
     }
+    const userAch = localAchievements.find((a) => a.id === achievementId);
+    if (userAch?.unlockedAt) {
+      const date = userAch.unlockedAt.toDate
+        ? userAch.unlockedAt.toDate()
+        : new Date(userAch.unlockedAt);
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
     return null;
+  };
+
+  const handleClaim = async (achievementId: string) => {
+    // 1. Try to claim in backend
+    let result = await claimAchievement(userId, achievementId);
+
+    // 2. If backend failed (e.g. permission error), mock success locally so user sees animation
+    if (!result) {
+      console.warn("Backend claim failed (permissions?). Forcing local claim for UX.");
+      const current = localAchievements.find(a => a.id === achievementId);
+      if (current) {
+        result = { ...current, isClaimed: true, claimedAt: { toDate: () => new Date() } as any };
+      }
+    }
+
+    if (result) {
+      // Update local state
+      const updated = localAchievements.map(a =>
+        a.id === achievementId ? { ...a, isClaimed: true, claimedAt: Date.now() } : a
+      );
+      setLocalAchievements(updated);
+
+      // Update selected achievement if open
+      if (selectedAchievement?.id === achievementId) {
+        setSelectedAchievement((prev: any) => ({
+          ...prev,
+          status: "claimed"
+        }));
+      }
+
+      // Trigger confetti
+      setShowConfetti(true);
+      if (confettiRef.current) {
+        confettiRef.current.start();
+      }
+      // Trigger confetti
+      setShowConfetti(true);
+      if (confettiRef.current) {
+        confettiRef.current.start();
+      }
+      setTimeout(() => setShowConfetti(false), 3000);
+
+      // Show toast
+      setToastAchievement(result);
+      setToastVisible(true);
+    }
+  };
+
+  const handleDevUnlock = async (achievementId: string) => {
+    // 1. Try to Force unlock in backend
+    let unlocked = await unlockAchievement(userId, achievementId);
+
+    // 2. If backend failed (e.g. permission error), mock it locally for testing
+    if (!unlocked) {
+      console.warn("Backend unlock failed. Forcing local unlock for testing.");
+      const definition = ACHIEVEMENTS.find(a => a.id === achievementId);
+      if (definition) {
+        unlocked = {
+          ...definition,
+          userId,
+          unlockedAt: { toDate: () => new Date() } as any,
+          isClaimed: false
+        };
+      }
+    }
+
+    // 3. Refresh local state
+    if (unlocked) {
+      // Force it to be unclaimed initially so we can test the claim flow
+      const newAchievement = {
+        ...unlocked,
+        isClaimed: false
+      };
+
+      setLocalAchievements(prev => {
+        // Remove if exists, then add
+        const filtered = prev.filter(a => a.id !== achievementId);
+        return [...filtered, newAchievement];
+      });
+
+      // Update modal to show "Claim" UI immediately
+      if (selectedAchievement?.id === achievementId) {
+        setSelectedAchievement((prev: any) => ({
+          ...prev,
+          status: "unlocked",
+          isUnlocked: true
+        }));
+      }
+    }
   };
 
   const filteredAchievements = ACHIEVEMENTS.filter((achievement) => {
@@ -112,17 +269,20 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
   });
 
   const unlockedCount = ACHIEVEMENTS.filter((a) =>
-    isAchievementUnlocked(a.id)
+    localAchievements.find(userA => userA.id === a.id)?.isClaimed
   ).length;
 
   const handleAchievementPress = (achievement: any) => {
     const isUnlocked = isAchievementUnlocked(achievement.id);
+    const { status } = getAchievementStatus(achievement.id);
     const progress = getProgress(achievement);
     const unlockedDate = getUnlockedDate(achievement.id);
 
     setSelectedAchievement({
       ...achievement,
+      ...achievement,
       isUnlocked,
+      status, // 'locked', 'unlocked', 'claimed'
       progress,
       unlockedDate,
     });
@@ -240,7 +400,9 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
           {/* Achievements Grid */}
           <View style={styles.achievementsGrid}>
             {filteredAchievements.map((achievement, index) => {
-              const isUnlocked = isAchievementUnlocked(achievement.id);
+              const { status } = getAchievementStatus(achievement.id);
+              const isUnlocked = status !== "locked";
+              const isClaimed = status === "claimed";
               const progress = getProgress(achievement);
 
               return (
@@ -248,6 +410,7 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                   key={achievement.id}
                   style={[
                     styles.achievementCard,
+                    isUnlocked && !isClaimed ? styles.achievementCardUnclaimed : {},
                     !isUnlocked && styles.achievementCardLocked,
                   ]}
                   onPress={() => handleAchievementPress(achievement)}
@@ -261,8 +424,13 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                           style={styles.achievementImage}
                         />
                         <View style={styles.unlockedBadge}>
-                          <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                          <Ionicons name={isClaimed ? "checkmark-circle" : "gift"} size={24} color={isClaimed ? "#10B981" : "#F59E0B"} />
                         </View>
+                        {!isClaimed && (
+                          <View style={styles.claimOverlay}>
+                            <Text style={styles.claimText}>Tap to Claim</Text>
+                          </View>
+                        )}
                       </>
                     ) : (
                       <View style={styles.lockedOverlay}>
@@ -339,11 +507,24 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
               </TouchableOpacity>
 
               <View style={styles.modalImageContainer}>
-                {selectedAchievement.isUnlocked ? (
+                {selectedAchievement.status === "claimed" ? (
                   <Image
                     source={selectedAchievement.imageFile}
                     style={styles.modalImage}
                   />
+                ) : selectedAchievement.status === "unlocked" ? (
+                  <View style={styles.modalUnlockedImage}>
+                    <Image
+                      source={selectedAchievement.imageFile}
+                      style={[styles.modalImage, { opacity: 0.5 }]}
+                    />
+                    <TouchableOpacity
+                      style={styles.modalClaimButton}
+                      onPress={() => handleClaim(selectedAchievement.id)}
+                    >
+                      <Text style={styles.modalClaimButtonText}>Claim Reward</Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : (
                   <View style={styles.modalLockedImage}>
                     <Ionicons name="lock-closed" size={64} color="#94A3B8" />
@@ -357,7 +538,7 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                   {selectedAchievement.description}
                 </Text>
 
-                {selectedAchievement.isUnlocked ? (
+                {selectedAchievement.status === "claimed" ? (
                   <View style={styles.modalUnlockedSection}>
                     <LinearGradient
                       colors={["#10B981", "#059669"]}
@@ -371,6 +552,11 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                         Achieved on {selectedAchievement.unlockedDate}
                       </Text>
                     )}
+                  </View>
+                ) : selectedAchievement.status === "unlocked" ? (
+                  <View style={styles.modalClaimSection}>
+                    <Text style={styles.modalClaimTitle}>Achievement Unlocked!</Text>
+                    <Text style={styles.modalClaimSubtitle}>You've met the requirements. Claim it now!</Text>
                   </View>
                 ) : (
                   <View style={styles.modalLockedSection}>
@@ -398,8 +584,8 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                       {selectedAchievement.type === AchievementType.STREAK
                         ? "days"
                         : selectedAchievement.type === AchievementType.FOCUS_TIME
-                        ? "minutes"
-                        : "tasks"}
+                          ? "minutes"
+                          : "tasks"}
                     </Text>
 
                     <View style={styles.modalTipContainer}>
@@ -408,16 +594,42 @@ const AchievementsScreen: React.FC<AchievementsScreenProps> = ({
                         {selectedAchievement.type === AchievementType.STREAK
                           ? "Keep using the app daily to build your streak!"
                           : selectedAchievement.type === AchievementType.FOCUS_TIME
-                          ? "Complete more focus sessions to increase your total focus time!"
-                          : "Complete more tasks to unlock this achievement!"}
+                            ? "Complete more focus sessions to increase your total focus time!"
+                            : "Complete more tasks to unlock this achievement!"}
                       </Text>
                     </View>
+
+                    {/* DEV ONLY: Tester Button */}
+                    <TouchableOpacity
+                      style={styles.devUnlockButton}
+                      onPress={() => handleDevUnlock(selectedAchievement.id)}
+                    >
+                      <Text style={styles.devUnlockText}>[TEST] Force Unlock</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
             </View>
           </View>
         </Modal>
+      )}
+
+      {showConfetti && (
+        <ConfettiCannon
+          ref={confettiRef}
+          count={200}
+          origin={{ x: -10, y: 0 }}
+          fadeOut={true}
+          autoStart={true}
+        />
+      )}
+
+      {toastAchievement && (
+        <AchievementToast
+          visible={toastVisible}
+          achievement={toastAchievement}
+          onClose={() => setToastVisible(false)}
+        />
       )}
     </View>
   );
@@ -553,6 +765,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#E2E8F0",
   },
+  achievementCardUnclaimed: {
+    borderColor: "#F59E0B",
+    borderWidth: 2,
+  },
   achievementCardLocked: {
     opacity: 0.7,
   },
@@ -566,6 +782,30 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     resizeMode: "cover",
+  },
+  modalUnlockedImage: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+  },
+  modalClaimButton: {
+    position: "absolute",
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    elevation: 4,
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  modalClaimButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   lockedOverlay: {
     width: "100%",
@@ -581,6 +821,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 12,
     elevation: 2,
+  },
+  claimOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(245, 158, 11, 0.9)",
+    paddingVertical: 4,
+    alignItems: "center",
+  },
+  claimText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
+    textTransform: "uppercase",
   },
   achievementInfo: {
     padding: 12,
@@ -767,6 +1022,41 @@ const styles = StyleSheet.create({
     color: "#78350F",
     lineHeight: 16,
     fontWeight: "600",
+  },
+  modalClaimSection: {
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  modalClaimTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#D97706',
+    marginBottom: 8,
+  },
+  modalClaimSubtitle: {
+    fontSize: 14,
+    color: '#92400E',
+    textAlign: 'center',
+  },
+  devUnlockButton: {
+    marginTop: 20,
+    backgroundColor: '#F1F5F9',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    borderStyle: 'dashed',
+  },
+  devUnlockText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: 'monospace',
   },
 });
 

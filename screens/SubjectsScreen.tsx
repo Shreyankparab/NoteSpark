@@ -15,17 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../firebase/firebaseConfig';
-import { Subject, Task } from '../types';
+import { Subject, Task, SubSubject } from '../types';
 import AddTasksToSubjectModal from '../components/modals/AddTasksToSubjectModal';
 
 const SUBJECT_COLORS = [
-  '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', 
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
   '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
   '#F8B500', '#52B788', '#E63946', '#457B9D'
 ];
 
 const SUBJECT_ICONS = [
-  '📚', '🎨', '🔬', '💻', '🎵', '⚽', 
+  '📚', '🎨', '🔬', '💻', '🎵', '⚽',
   '🎭', '📊', '🌍', '🧮', '✍️', '🎯'
 ];
 
@@ -42,13 +42,20 @@ const SubjectsScreen: React.FC = () => {
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
   const [fadeAnim] = useState(new Animated.Value(0));
 
+  // Sub-subject state
+  const [subSubjects, setSubSubjects] = useState<SubSubject[]>([]);
+  const [showSubSubjectModal, setShowSubSubjectModal] = useState(false);
+  const [editingSubSubject, setEditingSubSubject] = useState<SubSubject | null>(null);
+  const [subSubjectName, setSubSubjectName] = useState('');
+  const [selectedSubjectForSubSubject, setSelectedSubjectForSubSubject] = useState<Subject | null>(null);
+
   useEffect(() => {
     if (!auth.currentUser) return;
 
     // Load subjects
     const subjectsRef = collection(db, 'subjects');
     const subjectsQuery = query(subjectsRef, where('userId', '==', auth.currentUser.uid));
-    
+
     const unsubscribeSubjects = onSnapshot(subjectsQuery, (snapshot) => {
       const loadedSubjects: Subject[] = [];
       snapshot.forEach((doc) => {
@@ -60,7 +67,7 @@ const SubjectsScreen: React.FC = () => {
     // Load tasks
     const tasksRef = collection(db, 'tasks');
     const tasksQuery = query(tasksRef, where('userId', '==', auth.currentUser.uid));
-    
+
     const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
       const loadedTasks: Task[] = [];
       snapshot.forEach((doc) => {
@@ -69,9 +76,22 @@ const SubjectsScreen: React.FC = () => {
       setTasks(loadedTasks);
     });
 
+    // Load sub-subjects
+    const subSubjectsRef = collection(db, 'subSubjects');
+    const subSubjectsQuery = query(subSubjectsRef, where('userId', '==', auth.currentUser.uid));
+
+    const unsubscribeSubSubjects = onSnapshot(subSubjectsQuery, (snapshot) => {
+      const loadedSubSubjects: SubSubject[] = [];
+      snapshot.forEach((doc) => {
+        loadedSubSubjects.push({ id: doc.id, ...doc.data() } as SubSubject);
+      });
+      setSubSubjects(loadedSubSubjects.sort((a, b) => a.createdAt - b.createdAt));
+    });
+
     return () => {
       unsubscribeSubjects();
       unsubscribeTasks();
+      unsubscribeSubSubjects();
     };
   }, []);
 
@@ -135,7 +155,7 @@ const SubjectsScreen: React.FC = () => {
 
   const handleDeleteSubject = (subject: Subject) => {
     const tasksInSubject = tasks.filter(t => t.subjectId === subject.id);
-    
+
     Alert.alert(
       'Delete Subject',
       tasksInSubject.length > 0
@@ -153,7 +173,7 @@ const SubjectsScreen: React.FC = () => {
                 const taskRef = doc(db, 'tasks', task.id);
                 await updateDoc(taskRef, { subjectId: null });
               }
-              
+
               // Delete subject
               await deleteDoc(doc(db, 'subjects', subject.id));
             } catch (error) {
@@ -170,12 +190,111 @@ const SubjectsScreen: React.FC = () => {
     return tasks.filter(t => t.subjectId === subjectId);
   };
 
+  const getTasksForSubSubject = (subSubjectId: string) => {
+    return tasks.filter(t => t.subSubjectId === subSubjectId);
+  };
+
+  const getTasksWithoutSubSubject = (subjectId: string) => {
+    return tasks.filter(t => t.subjectId === subjectId && !t.subSubjectId);
+  };
+
   const getUnassignedTasks = () => {
     return tasks.filter(t => !t.subjectId);
   };
 
   const toggleSubjectExpansion = (subjectId: string) => {
     setExpandedSubjectId(expandedSubjectId === subjectId ? null : subjectId);
+  };
+
+  // Sub-subject management functions
+  const openAddSubSubjectModal = (subject: Subject) => {
+    setSelectedSubjectForSubSubject(subject);
+    setEditingSubSubject(null);
+    setSubSubjectName('');
+    setShowSubSubjectModal(true);
+  };
+
+  const openEditSubSubjectModal = (subSubject: SubSubject) => {
+    const parentSubject = subjects.find(s => s.id === subSubject.subjectId);
+    if (parentSubject) {
+      setSelectedSubjectForSubSubject(parentSubject);
+    }
+    setEditingSubSubject(subSubject);
+    setSubSubjectName(subSubject.name);
+    setShowSubSubjectModal(true);
+  };
+
+  const handleSaveSubSubject = async () => {
+    if (!subSubjectName.trim()) {
+      Alert.alert('Error', 'Please enter a topic name');
+      return;
+    }
+
+    if (!auth.currentUser) return;
+
+    try {
+      if (editingSubSubject) {
+        // Update existing sub-subject
+        const subSubjectRef = doc(db, 'subSubjects', editingSubSubject.id);
+        await updateDoc(subSubjectRef, {
+          name: subSubjectName.trim(),
+        });
+      } else {
+        // Create new sub-subject
+        if (!selectedSubjectForSubSubject) return;
+
+        await addDoc(collection(db, 'subSubjects'), {
+          name: subSubjectName.trim(),
+          subjectId: selectedSubjectForSubSubject.id,
+          userId: auth.currentUser.uid,
+          createdAt: Date.now(),
+        });
+      }
+      setShowSubSubjectModal(false);
+      setSelectedSubjectForSubSubject(null);
+      setSubSubjectName('');
+      setEditingSubSubject(null);
+    } catch (error) {
+      console.error('Error saving sub-subject:', error);
+      Alert.alert('Error', 'Failed to save topic');
+    }
+  };
+
+  const handleDeleteSubSubject = (subSubject: SubSubject) => {
+    const tasksInSubSubject = tasks.filter(t => t.subSubjectId === subSubject.id);
+
+    Alert.alert(
+      'Delete Topic',
+      tasksInSubSubject.length > 0
+        ? `This topic has ${tasksInSubSubject.length} task(s). Tasks will be unassigned from this topic. Continue?`
+        : 'Are you sure you want to delete this topic?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Unassign tasks from this sub-subject
+              for (const task of tasksInSubSubject) {
+                const taskRef = doc(db, 'tasks', task.id);
+                await updateDoc(taskRef, { subSubjectId: null });
+              }
+
+              // Delete sub-subject
+              await deleteDoc(doc(db, 'subSubjects', subSubject.id));
+            } catch (error) {
+              console.error('Error deleting sub-subject:', error);
+              Alert.alert('Error', 'Failed to delete topic');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const getSubSubjectsForSubject = (subjectId: string) => {
+    return subSubjects.filter(ss => ss.subjectId === subjectId);
   };
 
   const renderSubjectCard = ({ item }: { item: Subject }) => {
@@ -203,7 +322,7 @@ const SubjectsScreen: React.FC = () => {
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.subjectActions}>
                 <TouchableOpacity
                   onPress={() => openEditModal(item)}
@@ -247,49 +366,133 @@ const SubjectsScreen: React.FC = () => {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Expanded task list */}
+        {/* Expanded content */}
         {isExpanded && (
           <View style={styles.tasksList}>
-            {subjectTasks.length > 0 ? (
-              <>
-                {subjectTasks.map((task) => (
-                  <View key={task.id} style={styles.taskItem}>
-                    <Ionicons
-                      name={task.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={20}
-                      color={task.status === 'completed' ? '#10B981' : '#94A3B8'}
-                    />
-                    <Text
-                      style={[
-                        styles.taskTitle,
-                        task.status === 'completed' && styles.taskTitleCompleted,
-                      ]}
-                    >
-                      {task.title}
-                    </Text>
-                    <Text style={styles.taskDuration}>{task.duration}m</Text>
-                  </View>
-                ))}
-              </>
-            ) : (
-              <View style={styles.emptyTasksContainer}>
-                <Text style={styles.emptyTasksText}>No tasks assigned yet</Text>
+            {/* Sub-subjects (Topics) section */}
+            <View style={styles.subSubjectsSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>📖 Topics</Text>
+                <TouchableOpacity
+                  onPress={() => openAddSubSubjectModal(item)}
+                  style={[styles.addTopicButton, { borderColor: item.color }]}
+                >
+                  <Ionicons name="add" size={16} color={item.color} />
+                  <Text style={[styles.addTopicText, { color: item.color }]}>Add Topic</Text>
+                </TouchableOpacity>
               </View>
-            )}
-            
-            {/* Add Tasks Button */}
-            <TouchableOpacity
-              style={[styles.addTasksButton, { borderColor: item.color }]}
-              onPress={() => {
-                setSelectedSubjectForTasks(item);
-                setShowAddTasksModal(true);
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={20} color={item.color} />
-              <Text style={[styles.addTasksText, { color: item.color }]}>
-                Add Existing Tasks
-              </Text>
-            </TouchableOpacity>
+
+              {getSubSubjectsForSubject(item.id).length > 0 ? (
+                getSubSubjectsForSubject(item.id).map((subSubject) => {
+                  const topicTasks = getTasksForSubSubject(subSubject.id);
+                  const completedTopicTasks = topicTasks.filter(t => t.status === 'completed').length;
+
+                  return (
+                    <View key={subSubject.id} style={styles.subSubjectCard}>
+                      <View style={styles.subSubjectHeader}>
+                        <View style={styles.subSubjectInfo}>
+                          <Text style={styles.subSubjectIcon}>📖</Text>
+                          <View style={styles.subSubjectTextContainer}>
+                            <Text style={styles.subSubjectName}>{subSubject.name}</Text>
+                            <Text style={styles.subSubjectStats}>
+                              {topicTasks.length} task{topicTasks.length !== 1 ? 's' : ''} • {completedTopicTasks} completed
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.subSubjectActions}>
+                          <TouchableOpacity
+                            onPress={() => openEditSubSubjectModal(subSubject)}
+                            style={styles.iconButton}
+                          >
+                            <Ionicons name="pencil" size={16} color="#64748b" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteSubSubject(subSubject)}
+                            style={styles.iconButton}
+                          >
+                            <Ionicons name="trash-outline" size={16} color="#E74C3C" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {/* Tasks for this topic */}
+                      {topicTasks.length > 0 && (
+                        <View style={styles.topicTasksList}>
+                          {topicTasks.map((task) => (
+                            <View key={task.id} style={styles.topicTaskItem}>
+                              <Ionicons
+                                name={task.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'}
+                                size={18}
+                                color={task.status === 'completed' ? '#10B981' : '#94A3B8'}
+                              />
+                              <Text
+                                style={[
+                                  styles.topicTaskTitle,
+                                  task.status === 'completed' && styles.taskTitleCompleted,
+                                ]}
+                              >
+                                {task.title}
+                              </Text>
+                              <Text style={styles.topicTaskDuration}>{task.duration}m</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.emptySubSubjectsText}>No topics yet. Add one to organize your tasks!</Text>
+              )}
+            </View>
+
+            {/* Tasks section - Only tasks without sub-subjects */}
+            <View style={styles.tasksSection}>
+              <Text style={styles.sectionTitle}>✓ General Tasks</Text>
+              {(() => {
+                const generalTasks = getTasksWithoutSubSubject(item.id);
+                return generalTasks.length > 0 ? (
+                  <>
+                    {generalTasks.map((task) => (
+                      <View key={task.id} style={styles.taskItem}>
+                        <Ionicons
+                          name={task.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={20}
+                          color={task.status === 'completed' ? '#10B981' : '#94A3B8'}
+                        />
+                        <Text
+                          style={[
+                            styles.taskTitle,
+                            task.status === 'completed' && styles.taskTitleCompleted,
+                          ]}
+                        >
+                          {task.title}
+                        </Text>
+                        <Text style={styles.taskDuration}>{task.duration}m</Text>
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <View style={styles.emptyTasksContainer}>
+                    <Text style={styles.emptyTasksText}>No general tasks</Text>
+                  </View>
+                );
+              })()}
+
+              {/* Add Tasks Button */}
+              <TouchableOpacity
+                style={[styles.addTasksButton, { borderColor: item.color }]}
+                onPress={() => {
+                  setSelectedSubjectForTasks(item);
+                  setShowAddTasksModal(true);
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={20} color={item.color} />
+                <Text style={[styles.addTasksText, { color: item.color }]}>
+                  Add Existing Tasks
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </Animated.View>
@@ -364,72 +567,72 @@ const SubjectsScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.modalScrollView}
               contentContainerStyle={styles.modalScrollContent}
               showsVerticalScrollIndicator={false}
             >
               {/* Subject Name */}
               <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Subject Name</Text>
-              <TextInput
-                style={styles.input}
-                value={subjectName}
-                onChangeText={setSubjectName}
-                placeholder="e.g., Mathematics, Physics, Art"
-                placeholderTextColor="#94A3B8"
-              />
-            </View>
-
-            {/* Icon Selection */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Choose Icon</Text>
-              <View style={styles.iconGrid}>
-                {SUBJECT_ICONS.map((icon) => (
-                  <TouchableOpacity
-                    key={icon}
-                    style={[
-                      styles.iconOption,
-                      selectedIcon === icon && styles.iconOptionSelected,
-                    ]}
-                    onPress={() => setSelectedIcon(icon)}
-                  >
-                    <Text style={styles.iconText}>{icon}</Text>
-                  </TouchableOpacity>
-                ))}
+                <Text style={styles.inputLabel}>Subject Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={subjectName}
+                  onChangeText={setSubjectName}
+                  placeholder="e.g., Mathematics, Physics, Art"
+                  placeholderTextColor="#94A3B8"
+                />
               </View>
-            </View>
 
-            {/* Color Selection */}
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Choose Color</Text>
-              <View style={styles.colorGrid}>
-                {SUBJECT_COLORS.map((color) => (
-                  <TouchableOpacity
-                    key={color}
-                    style={[
-                      styles.colorOption,
-                      { backgroundColor: color },
-                      selectedColor === color && styles.colorOptionSelected,
-                    ]}
-                    onPress={() => setSelectedColor(color)}
-                  >
-                    {selectedColor === color && (
-                      <Ionicons name="checkmark" size={20} color="#FFF" />
-                    )}
-                  </TouchableOpacity>
-                ))}
+              {/* Icon Selection */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Choose Icon</Text>
+                <View style={styles.iconGrid}>
+                  {SUBJECT_ICONS.map((icon) => (
+                    <TouchableOpacity
+                      key={icon}
+                      style={[
+                        styles.iconOption,
+                        selectedIcon === icon && styles.iconOptionSelected,
+                      ]}
+                      onPress={() => setSelectedIcon(icon)}
+                    >
+                      <Text style={styles.iconText}>{icon}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
 
-            {/* Preview */}
-            <View style={styles.previewContainer}>
-              <Text style={styles.previewLabel}>Preview</Text>
-              <View style={[styles.previewCard, { borderColor: selectedColor }]}>
-                <Text style={styles.previewIcon}>{selectedIcon}</Text>
-                <Text style={styles.previewName}>{subjectName || 'Subject Name'}</Text>
+              {/* Color Selection */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Choose Color</Text>
+                <View style={styles.colorGrid}>
+                  {SUBJECT_COLORS.map((color) => (
+                    <TouchableOpacity
+                      key={color}
+                      style={[
+                        styles.colorOption,
+                        { backgroundColor: color },
+                        selectedColor === color && styles.colorOptionSelected,
+                      ]}
+                      onPress={() => setSelectedColor(color)}
+                    >
+                      {selectedColor === color && (
+                        <Ionicons name="checkmark" size={20} color="#FFF" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
+
+              {/* Preview */}
+              <View style={styles.previewContainer}>
+                <Text style={styles.previewLabel}>Preview</Text>
+                <View style={[styles.previewCard, { borderColor: selectedColor }]}>
+                  <Text style={styles.previewIcon}>{selectedIcon}</Text>
+                  <Text style={styles.previewName}>{subjectName || 'Subject Name'}</Text>
+                </View>
+              </View>
 
               {/* Save Button */}
               <TouchableOpacity
@@ -447,6 +650,66 @@ const SubjectsScreen: React.FC = () => {
                 </LinearGradient>
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add/Edit Sub-Subject (Topic) Modal */}
+      <Modal
+        visible={showSubSubjectModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowSubSubjectModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingSubSubject ? 'Edit Topic' : 'New Topic'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowSubSubjectModal(false)}>
+                <Ionicons name="close" size={28} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              {selectedSubjectForSubSubject && (
+                <View style={styles.parentSubjectInfo}>
+                  <Text style={styles.parentSubjectLabel}>Subject:</Text>
+                  <View style={styles.parentSubjectBadge}>
+                    <Text style={styles.parentSubjectIcon}>{selectedSubjectForSubSubject.icon}</Text>
+                    <Text style={styles.parentSubjectName}>{selectedSubjectForSubSubject.name}</Text>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Topic Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={subSubjectName}
+                  onChangeText={setSubSubjectName}
+                  placeholder="e.g., Chapter 1, Algebra, Introduction"
+                  placeholderTextColor="#94A3B8"
+                  autoFocus
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleSaveSubSubject}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={['#6366F1', '#8B5CF6']}
+                  style={styles.saveButtonGradient}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {editingSubSubject ? 'Update Topic' : 'Create Topic'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -794,6 +1057,152 @@ const styles = StyleSheet.create({
   addTasksText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Sub-subjects (Topics) styles
+  subSubjectsSection: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  addTopicButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    gap: 6,
+  },
+  addTopicText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  subSubjectItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    marginBottom: 8,
+    gap: 10,
+  },
+  subSubjectIcon: {
+    fontSize: 18,
+  },
+  subSubjectName: {
+    flex: 1,
+    fontSize: 15,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  subSubjectActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 6,
+  },
+  emptySubSubjectsText: {
+    fontSize: 13,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  tasksSection: {
+    marginTop: 8,
+  },
+  // Sub-subject modal styles
+  modalBody: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  parentSubjectInfo: {
+    marginBottom: 20,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+  },
+  parentSubjectLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  parentSubjectBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  parentSubjectIcon: {
+    fontSize: 24,
+  },
+  parentSubjectName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  // Topic task card styles
+  subSubjectCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  subSubjectHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subSubjectInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  subSubjectTextContainer: {
+    flex: 1,
+  },
+  subSubjectStats: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  topicTasksList: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  topicTaskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 10,
+  },
+  topicTaskTitle: {
+    flex: 1,
+    fontSize: 14,
+    color: '#334155',
+  },
+  topicTaskDuration: {
+    fontSize: 13,
+    color: '#64748b',
   },
 });
 

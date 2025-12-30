@@ -1,134 +1,125 @@
 import * as WebBrowser from "expo-web-browser";
+import { makeRedirectUri } from "expo-auth-session";
 import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
 import { auth } from "../firebase/firebaseConfig";
-import Constants from "expo-constants";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Linking from "expo-linking";
 
-// Define the correct type for WebBrowser success result
-interface WebBrowserAuthSessionResult {
-  type: "success" | "cancel" | "dismiss" | "locked";
-  url?: string;
-}
-
+// Ensure auth session is ready
 WebBrowser.maybeCompleteAuthSession();
 
-type GoogleClientIds = {
-  web: string;
-};
+// Client ID for Web (used for all platforms via implicit flow/popup)
+const GOOGLE_CLIENT_ID = "189308470391-65rvc8sk05df38si10ru69oh516r01bc.apps.googleusercontent.com";
 
-const GOOGLE_CLIENT_IDS: GoogleClientIds = {
-  web: "189308470391-65rvc8sk05df38si10ru69oh516r01bc.apps.googleusercontent.com",
-};
+// Helper to determine if running in Expo Go
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
-// Get the correct redirect URI based on environment
+// Get the correct redirect URI
 const getRedirectUri = () => {
   try {
-    // Always use the web redirect URI which is supported by Google Cloud Console
-    // This is the most reliable approach for both development and production
-    return "https://auth.expo.io/@joke69/NoteSpark";
-  } catch (error) {
-    console.error("Error determining redirect URI:", error);
-    // Fallback to the most reliable option
+    // Attempt to generic a scheme-based URI (e.g., notespark://auth)
+    return makeRedirectUri({
+      scheme: 'notespark',
+      path: 'auth'
+    });
+  } catch (e) {
+    console.error("Redirect URI generation failed, falling back to proxy", e);
     return "https://auth.expo.io/@joke69/NoteSpark";
   }
 };
 
-const REDIRECT_URI = getRedirectUri();
-
 export async function signInWithGoogle(): Promise<void> {
   try {
-    // Generate a random nonce to prevent CSRF attacks
-    const nonce =
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    // 1. Calculate the 'Deep Link' - where the app expects to receive the response
+    const deepLink = getRedirectUri();
 
-    // Add flowName parameter to match what's shown in the error screenshot
-    const authUrl =
-      "https://accounts.google.com/o/oauth2/v2/auth?" +
-      new URLSearchParams({
-        client_id: GOOGLE_CLIENT_IDS.web,
-        redirect_uri: REDIRECT_URI,
-        response_type: "id_token",
-        scope: "openid email profile",
-        prompt: "select_account",
-        nonce: nonce,
-        flowName: "GeneralOAuthFlow", // Adding this to match what's in the error
-      }).toString();
+    // 2. Calculate the 'Google Redirect URI' - what we tell Google to send to
+    let googleRedirectUri = deepLink;
 
-    console.log("Opening auth session with redirect URI:", REDIRECT_URI);
-    console.log("Full auth URL:", authUrl);
+    // Fix for Expo Go: Google doesn't allow exp:// URIs, so we use the auth.expo.io proxy
+    if (isExpoGo || deepLink.includes('exp://')) {
+      // We need to construct the proxy URL: https://auth.expo.io/@<owner>/<slug>
+      // Use manifest config if available, otherwise fallback to hardcoded
+      const slug = Constants.expoConfig?.slug || 'NoteSpark';
+      // 'owner' might be undefined in dev, defaulting to your known username is safest for now
+      const owner = Constants.expoConfig?.owner || 'joke69';
 
-    // Use maybeCompleteAuthSession to ensure the session is properly handled
-    WebBrowser.maybeCompleteAuthSession();
-    
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI) as WebBrowserAuthSessionResult;
+      googleRedirectUri = `https://auth.expo.io/@${owner}/${slug}`;
+    }
+
+    console.log("🚀 Starting Google Sign-In...");
+    console.log("� Configuration:");
+    console.log(`   - Deep Link (App): ${deepLink}`);
+    console.log(`   - Redirect URI (Google): ${googleRedirectUri}`);
+
+    if (googleRedirectUri.includes("auth.expo.io")) {
+      console.log("   👉 ACTION REQUIRED: Add this URI to 'Authorized redirect URIs' in Google Cloud Console:");
+      console.log(`      ${googleRedirectUri}`);
+    }
+
+    // Generate nonce for security
+    const nonce = Math.random().toString(36).substring(2, 15);
+
+    // Build the Auth URL
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: googleRedirectUri,
+      response_type: "id_token",
+      scope: "openid email profile",
+      prompt: "select_account",
+      nonce: nonce,
+    });
+
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+
+    // Open the browser session
+    // We pass 'deepLink' as the second arg so Expo knows when to close the browser (on matching return URL)
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, deepLink);
 
     if (result.type === "cancel") {
-      console.log("User cancelled the sign-in process");
+      console.log("❌ Sign-in cancelled by user");
       return;
     }
 
     if (result.type !== "success" || !result.url) {
-      console.error("Google Sign-In failed:", result);
-      // Check if the URL contains invalid_request error (Error 400)
-      if (result.url && result.url.includes("invalid_request")) {
-        console.error(
-          "Invalid request error detected. This may be due to redirect URI mismatch."
-        );
-        throw new Error(
-          "Authentication failed: Redirect URI mismatch. Please check Google Cloud Console configuration."
-        );
-      }
-      throw new Error("Google Sign-In failed. Please try again.");
+      console.error("❌ Sign-in failed or incomplete", result);
+      throw new Error(`Sign-in failed (${result.type})`);
     }
 
+    // Parse the result URL to get the ID Token
     const url = result.url;
-    console.log("Auth result URL (partial):", url.substring(0, 50) + "...");
+    // Google returns tokens in the hash fragment (#)
+    let idToken = "";
 
-    // Try to extract token from fragment (hash) - this is the most common format
-    const fragment = url.split("#")[1] || "";
-    const fragmentParams = new URLSearchParams(fragment);
-    const idTokenFromFragment = fragmentParams.get("id_token");
+    if (url.includes("#")) {
+      const fragment = url.split("#")[1];
+      const fragmentParams = new URLSearchParams(fragment);
+      idToken = fragmentParams.get("id_token") || "";
+    }
 
-    // Try to extract token from query parameters as fallback
-    const query = url.split("?")[1] || "";
-    const queryParams = new URLSearchParams(query);
-    const idTokenFromQuery = queryParams.get("id_token");
-
-    const idToken = idTokenFromFragment || idTokenFromQuery;
+    // Fallback: Check query params if hash failed
+    if (!idToken && url.includes("?")) {
+      const query = url.split("?")[1];
+      const queryParams = new URLSearchParams(query);
+      idToken = queryParams.get("id_token") || "";
+    }
 
     if (!idToken) {
-      console.error("No id_token found in the response URL");
-      throw new Error("Authentication failed: No token received from Google");
+      throw new Error("No ID token found in response URL");
     }
 
-    console.log("Successfully received id_token, signing in...");
+    // Sign in to Firebase
+    console.log("✅ Authenticating with Firebase...");
     const credential = GoogleAuthProvider.credential(idToken);
     await signInWithCredential(auth, credential);
-    console.log("Successfully signed in with Google");
+    console.log("🎉 Google Sign-in successful!");
+
   } catch (error) {
-    console.error("Error during Google sign-in:", error);
+    console.error("🚨 Google Sign-In Error:", error);
     throw error;
   }
 }
 
 export function getGoogleSetupHelp(): string {
-  return (
-    "To fix the 'Error 400: invalid_request' issue, follow these steps:\n\n" +
-    "1. Go to Google Cloud Console > APIs & Services > Credentials\n" +
-    "2. Edit your OAuth 2.0 Client ID\n" +
-    "3. Add ONLY this redirect URI:\n" +
-    "   https://auth.expo.io/@joke69/NoteSpark\n\n" +
-    "4. Remove any URIs with formats like exp://192.168.x.x:8081/--/redirect\n\n" +
-    "Important notes:\n" +
-    "• Make sure there are NO trailing slashes\n" +
-    "• Wait 5-10 minutes for changes to propagate after saving\n" +
-    "• Verify you're using the correct Web Client ID: " +
-    GOOGLE_CLIENT_IDS.web +
-    "\n" +
-    "• If testing in Expo Go, you may need to clear browser cache or try in incognito mode\n" +
-    "• The error 'redirect_uri=exp://192.168.1.10:8081/--/redirect' occurs because Google doesn't accept this format\n" +
-    "• For development testing, we're now using https://auth.expo.io/@joke69/NoteSpark instead"
-  );
+  return "Please check your terminal logs for the correct Redirect URI to add to Google Cloud Console.";
 }
-

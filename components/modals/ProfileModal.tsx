@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Modal, StyleSheet, Image, Alert, TextInpu
 import { Ionicons } from "@expo/vector-icons";
 import { User, updateProfile } from "firebase/auth";
 import * as ImagePicker from "expo-image-picker";
-import { uploadToCloudinaryBase64 } from "../../utils/imageStorage";
+import { uploadToFirebaseStorage } from "../../utils/imageStorage";
 import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebaseConfig";
 import { LinearGradient } from "expo-linear-gradient";
@@ -58,12 +58,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     });
     return unsub;
   }, [user?.uid]);
-  
+
   // Load user achievements when modal is visible
   useEffect(() => {
     const loadAchievements = async () => {
       if (!user?.uid || !visible) return;
-      
+
       setLoadingAchievements(true);
       try {
         const userAchievements = await getUserAchievements(user.uid);
@@ -74,7 +74,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         setLoadingAchievements(false);
       }
     };
-    
+
     loadAchievements();
   }, [user?.uid, visible]);
 
@@ -85,16 +85,16 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         Alert.alert("Permission", "Allow photo library access to change avatar");
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.9, allowsEditing: true, aspect: [1,1] });
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.9, allowsEditing: true, aspect: [1, 1] });
       if (result.canceled) return;
       const asset: any = result.assets[0];
       if (!asset?.base64) return;
       setUploading(true);
-      const url = await uploadToCloudinaryBase64(asset.base64, asset.mimeType || "image/jpeg", { folder: user ? `notespark/${user.uid}/avatars` : "notespark/avatars" });
+      const url = await uploadToFirebaseStorage(asset.base64, asset.mimeType || "image/jpeg", { folder: user ? `images/${user.uid}/avatars` : "images/avatars" });
       // Persist to Firebase Auth so it survives logout/login
       if (user) {
-        try { await updateProfile(user, { photoURL: url }); } catch {}
-        try { await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true }); } catch {}
+        try { await updateProfile(user, { photoURL: url }); } catch { }
+        try { await setDoc(doc(db, 'users', user.uid), { photoURL: url, updatedAt: serverTimestamp() }, { merge: true }); } catch { }
       }
       setPhotoUrl(url);
       Alert.alert("Saved", "Profile picture updated.");
@@ -117,7 +117,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     try {
       setSavingName(true);
       await updateProfile(user, { displayName });
-      try { await setDoc(doc(db, 'users', user.uid), { displayName, updatedAt: serverTimestamp() }, { merge: true }); } catch {}
+      try { await setDoc(doc(db, 'users', user.uid), { displayName, updatedAt: serverTimestamp() }, { merge: true }); } catch { }
       Alert.alert("Saved", "Display name updated.");
     } catch {
       Alert.alert("Error", "Failed to update name");
@@ -173,8 +173,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
           <Text style={styles.sectionHeading}>Stats</Text>
           <View style={styles.statsRow}>
-            <TouchableOpacity 
-              style={{ flex: 1 }} 
+            <TouchableOpacity
+              style={{ flex: 1 }}
               onPress={() => setShowStreaksScreen(true)}
               activeOpacity={0.8}
             >
@@ -200,7 +200,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionHeading}>Achievements</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setShowAchievementsScreen(true)}
               style={styles.viewAllButton}
             >
@@ -208,7 +208,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
               <Ionicons name="chevron-forward" size={16} color="#6366F1" />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.achievementsContainer}
             onPress={() => setShowAchievementsScreen(true)}
             activeOpacity={0.8}
@@ -218,9 +218,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             ) : achievements.length > 0 ? (
               <View style={styles.achievementsGrid}>
                 {achievements.slice(0, 6).map((achievement) => (
-                  <AchievementBadge 
-                    key={achievement.id} 
-                    achievement={achievement} 
+                  <AchievementBadge
+                    key={achievement.id}
+                    achievement={achievement}
                     size="medium"
                   />
                 ))}

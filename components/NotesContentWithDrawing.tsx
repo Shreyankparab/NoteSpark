@@ -24,14 +24,27 @@ const NotesContentWithDrawing: React.FC<NotesContentWithDrawingProps> = (props) 
     setDrawingData(data || null);
   };
 
+  // Dummy scroll handler - NotesContent manages its own scrolling
+  const manualScrollTo = (y: number) => {
+    // This is a placeholder - NotesContent handles its own scrolling internally
+    console.log('Scroll to:', y);
+  };
+
   return (
     <DrawingOverlay
       isDrawingMode={isDrawingMode}
       onToggleDrawingMode={toggleDrawingMode}
       onDrawingChange={handleDrawingChange}
       initialDrawingData={drawingData}
+      manualScrollTo={manualScrollTo}
     >
-      <NotesContent {...props} />
+      {(context) => (
+        <View style={{ flex: 1 }}>
+          <NotesContent {...props} />
+          {context.renderCanvas()}
+          {context.renderTools()}
+        </View>
+      )}
     </DrawingOverlay>
   );
 };

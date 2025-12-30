@@ -12,6 +12,16 @@ export interface Subject {
   userId: string;
 }
 
+export interface SubSubject {
+  id: string;
+  name: string;
+  subjectId: string; // Parent subject ID
+  icon?: string; // Optional emoji or icon
+  color?: string; // Optional color (inherits from parent if not set)
+  userId: string;
+  createdAt: number;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -22,6 +32,7 @@ export interface Task {
   status: "active" | "completed" | "pending" | "abandoned";
   userId: string;
   subjectId?: string; // optional subject assignment
+  subSubjectId?: string; // optional sub-subject (topic/chapter) assignment
 }
 
 export interface UserSettings {
@@ -40,7 +51,10 @@ export interface PomodoroNote {
   userId: string;
   imageUrl?: string;
   subjectId?: string; // optional subject assignment
+  subSubjectId?: string; // optional sub-subject (topic/chapter) assignment
   doodleData?: string; // JSON string of drawing paths
+  imageDrawings?: string; // JSON string of map { [url]: drawingData }
+  breakDuration?: number; // accumulated break duration in minutes
 }
 
 // --- ACHIEVEMENT TYPES ---
@@ -55,9 +69,12 @@ export interface Achievement {
   type: AchievementType;
   name: string;
   description: string;
-  imageFile: string; // filename of the badge image in assets folder
+  imageFile: any; // Can be number (require) or string (URI/path)
+  imagePath?: string; // String path for DB storage (e.g. "assets/foo.jpg")
   unlockedAt?: any; // timestamp when achieved (can be number or Firebase FieldValue)
   userId: string;
+  isClaimed?: boolean;
+  claimedAt?: any; // timestamp when claimed
 }
 
 export interface UserAchievement {

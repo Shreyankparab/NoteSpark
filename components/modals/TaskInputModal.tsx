@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  Modal, 
-  TextInput, 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  TextInput,
   Alert,
   ScrollView,
   StyleSheet,
   Animated,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
-import { SoundPreset, Subject } from "../../types";
+import Slider from "@react-native-community/slider";
+import { SoundPreset, Subject, SubSubject } from "../../types";
 import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
 import { db, auth } from '../../firebase/firebaseConfig';
 import { playCompletionSound } from "../../utils/audio";
@@ -20,7 +22,7 @@ import { playCompletionSound } from "../../utils/audio";
 interface TaskInputModalProps {
   visible: boolean;
   onClose: () => void;
-  onSave: (taskTitle: string, subjectId?: string) => void;
+  onSave: (taskTitle: string, subjectId: string | undefined, focusMinutes: number, breakMinutes: number | null, subSubjectId?: string | undefined) => void;
   isSoundOn: boolean;
   isVibrationOn: boolean;
   selectedSound: SoundPreset;
@@ -30,6 +32,7 @@ interface TaskInputModalProps {
   soundPresets: SoundPreset[];
   isFlipDeviceOn?: boolean;
   onToggleFlipDevice?: (value: boolean) => void;
+  initialFocusMinutes?: number;
 }
 
 const TaskInputModal: React.FC<TaskInputModalProps> = ({
@@ -45,6 +48,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
   soundPresets,
   isFlipDeviceOn = false,
   onToggleFlipDevice,
+  initialFocusMinutes = 25,
 }) => {
   const [taskTitle, setTaskTitle] = useState("");
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -56,6 +60,16 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
   const [newSubjectColor, setNewSubjectColor] = useState("#6366F1");
   const [isCreatingSubject, setIsCreatingSubject] = useState(false);
 
+  // Sub-subject state
+  const [subSubjects, setSubSubjects] = useState<SubSubject[]>([]);
+  const [selectedSubSubjectId, setSelectedSubSubjectId] = useState<string | null>(null);
+  const [showSubSubjectPicker, setShowSubSubjectPicker] = useState(false);
+
+  // Timer Configuration State
+  const [focusMinutes, setFocusMinutes] = useState(String(initialFocusMinutes));
+  const [isBreakNeeded, setIsBreakNeeded] = useState(false);
+  const [breakMinutes, setBreakMinutes] = useState(5);
+
   const QUICK_COLORS = ['#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#3B82F6'];
   const QUICK_ICONS = ['📚', '🎨', '💻', '🔬', '🎵', '⚽'];
 
@@ -64,7 +78,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
 
     const subjectsRef = collection(db, 'subjects');
     const subjectsQuery = query(subjectsRef, where('userId', '==', auth.currentUser.uid));
-    
+
     const unsubscribe = onSnapshot(subjectsQuery, (snapshot) => {
       const loadedSubjects: Subject[] = [];
       snapshot.forEach((doc) => {
@@ -75,25 +89,83 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
 
     return () => unsubscribe();
   }, [visible]);
+  // Update focus minutes when initialFocusMinutes changes or modal becomes visible
+  useEffect(() => {
+    if (visible) {
+      setFocusMinutes(String(initialFocusMinutes));
+    }
+  }, [visible, initialFocusMinutes]);
+
+
+  // Load sub-subjects when a subject is selected
+  useEffect(() => {
+    if (!auth.currentUser || !visible || !selectedSubjectId) {
+      setSubSubjects([]);
+      setSelectedSubSubjectId(null);
+      return;
+    }
+
+    const subSubjectsRef = collection(db, 'subSubjects');
+    const subSubjectsQuery = query(
+      subSubjectsRef,
+      where('userId', '==', auth.currentUser.uid),
+      where('subjectId', '==', selectedSubjectId)
+    );
+
+    const unsubscribe = onSnapshot(subSubjectsQuery, (snapshot) => {
+      const loadedSubSubjects: SubSubject[] = [];
+      snapshot.forEach((doc) => {
+        loadedSubSubjects.push({ id: doc.id, ...doc.data() } as SubSubject);
+      });
+      setSubSubjects(loadedSubSubjects.sort((a, b) => a.name.localeCompare(b.name)));
+    });
+
+    return () => unsubscribe();
+  }, [visible, selectedSubjectId]);
 
   const handleSave = () => {
-    if (taskTitle.trim()) {
-      onSave(taskTitle.trim(), selectedSubjectId || undefined);
-      setTaskTitle("");
-      setSelectedSubjectId(null);
-    } else {
+    const focus = parseInt(focusMinutes, 10);
+    if (!taskTitle.trim()) {
       Alert.alert("Error", "Please enter a task title");
+      return;
     }
+    if (isNaN(focus) || focus <= 0) {
+      Alert.alert("Error", "Please enter a valid focus duration");
+      return;
+    }
+
+    onSave(
+      taskTitle.trim(),
+      selectedSubjectId || undefined,
+      focus,
+      isBreakNeeded ? breakMinutes : null,
+      selectedSubSubjectId || undefined
+    );
+
+    // Reset fields
+    setTaskTitle("");
+    setSelectedSubjectId(null);
+    setSelectedSubSubjectId(null);
   };
 
   const handleSkip = () => {
-    onSave("", undefined);
+    // If skipping task title, we still want to respect the user's timer settings or defaults?
+    // User requested "Older options" - usually skipping meant "Start without a task"
+    // Let's pass the current timer settings even if task is empty
+    const focus = parseInt(focusMinutes, 10) || 25;
+    onSave("", undefined, focus, isBreakNeeded ? breakMinutes : null, undefined);
+
     setTaskTitle("");
     setSelectedSubjectId(null);
+    setSelectedSubSubjectId(null);
   };
 
   const getSelectedSubject = () => {
     return subjects.find(s => s.id === selectedSubjectId);
+  };
+
+  const getSelectedSubSubject = () => {
+    return subSubjects.find(ss => ss.id === selectedSubSubjectId);
   };
 
   const handleCreateSubject = async () => {
@@ -154,7 +226,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
             </View>
           </LinearGradient>
 
-          <ScrollView 
+          <ScrollView
             showsVerticalScrollIndicator={false}
             style={styles.scrollContent}
             contentContainerStyle={styles.scrollContentContainer}
@@ -181,7 +253,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
             {/* Subject Selection */}
             <View style={styles.subjectSection}>
               <Text style={styles.sectionTitle}>📚 Subject (Optional)</Text>
-              
+
               {getSelectedSubject() ? (
                 <TouchableOpacity
                   style={[styles.selectedSubjectCard, { borderColor: getSelectedSubject()!.color }]}
@@ -209,7 +281,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                     <Ionicons name="folder-outline" size={20} color="#6366F1" />
                     <Text style={styles.selectSubjectText}>Select Subject</Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={styles.createSubjectButton}
                     onPress={() => setShowCreateSubject(true)}
@@ -229,7 +301,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                       <Ionicons name="close" size={24} color="#64748b" />
                     </TouchableOpacity>
                   </View>
-                  
+
                   <ScrollView style={styles.subjectList} nestedScrollEnabled>
                     <TouchableOpacity
                       style={[
@@ -247,7 +319,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                         <Ionicons name="checkmark" size={20} color="#6366F1" />
                       )}
                     </TouchableOpacity>
-                    
+
                     {subjects.map((subject) => (
                       <TouchableOpacity
                         key={subject.id}
@@ -272,12 +344,169 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                   </ScrollView>
                 </View>
               )}
+            {/* Sub-Subject (Topic) Selection - Only show when subject is selected */}
+            {selectedSubjectId && (
+              <View style={styles.subjectSection}>
+                <Text style={styles.sectionTitle}> Topic (Optional)</Text>
+
+                {getSelectedSubSubject() ? (
+                  <TouchableOpacity
+                    style={[styles.selectedSubjectCard, { borderColor: getSelectedSubject()?.color || '#6366F1' }]}
+                    onPress={() => setShowSubSubjectPicker(true)}
+                  >
+                    <View style={styles.subjectCardContent}>
+                      <Text style={styles.subjectIcon}></Text>
+                      <Text style={[styles.subjectName, { color: getSelectedSubject()?.color || '#6366F1' }]}>
+                        {getSelectedSubSubject()!.name}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedSubSubjectId(null)}
+                      style={styles.removeSubjectButton}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.selectSubjectButton}
+                    onPress={() => setShowSubSubjectPicker(true)}
+                    disabled={subSubjects.length === 0}
+                  >
+                    <Ionicons name="book-outline" size={20} color={subSubjects.length > 0 ? "#6366F1" : "#94A3B8"} />
+                    <Text style={[styles.selectSubjectText, subSubjects.length === 0 && { color: '#94A3B8' }]}>
+                      {subSubjects.length > 0 ? 'Select Topic' : 'No topics available'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Sub-Subject Picker Dropdown */}
+                {showSubSubjectPicker && (
+                  <View style={styles.subjectPicker}>
+                    <View style={styles.pickerHeader}>
+                      <Text style={styles.pickerTitle}>Choose Topic</Text>
+                      <TouchableOpacity onPress={() => setShowSubSubjectPicker(false)}>
+                        <Ionicons name="close" size={24} color="#64748b" />
+                      </TouchableOpacity>
+                    </View>
+
+                    <ScrollView style={styles.subjectList} nestedScrollEnabled>
+                      <TouchableOpacity
+                        style={[
+                          styles.subjectOption,
+                          !selectedSubSubjectId && styles.subjectOptionSelected
+                        ]}
+                        onPress={() => {
+                          setSelectedSubSubjectId(null);
+                          setShowSubSubjectPicker(false);
+                        }}
+                      >
+                        <Text style={styles.noSubjectIcon}></Text>
+                        <Text style={styles.subjectOptionText}>No Topic</Text>
+                        {!selectedSubSubjectId && (
+                          <Ionicons name="checkmark" size={20} color="#6366F1" />
+                        )}
+                      </TouchableOpacity>
+
+                      {subSubjects.map((subSubject) => (
+                        <TouchableOpacity
+                          key={subSubject.id}
+                          style={[
+                            styles.subjectOption,
+                            selectedSubSubjectId === subSubject.id && styles.subjectOptionSelected
+                          ]}
+                          onPress={() => {
+                            setSelectedSubSubjectId(subSubject.id);
+                            setShowSubSubjectPicker(false);
+                          }}
+                        >
+                          <Text style={styles.subjectIcon}></Text>
+                          <Text style={[styles.subjectOptionText, { color: getSelectedSubject()?.color || '#6366F1' }]}>
+                            {subSubject.name}
+                          </Text>
+                          {selectedSubSubjectId === subSubject.id && (
+                            <Ionicons name="checkmark" size={20} color={getSelectedSubject()?.color || '#6366F1'} />
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* Helper text for creating topics */}
+                {subSubjects.length === 0 && (
+                  <Text style={styles.helperText}>
+                     Create topics in the Subjects screen to organize your notes better
+                  </Text>
+                )}
+              </View>
+            )}
+
+            </View>
+
+            {/* Timer Configuration */}
+            <View style={styles.settingsSection}>
+              <Text style={styles.sectionTitle}>⏱️ Timer Configuration</Text>
+
+              {/* Focus Duration */}
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <Ionicons name="timer-outline" size={22} color="#6366F1" />
+                  <Text style={styles.settingLabel}>Focus Duration (min)</Text>
+                </View>
+                <TextInput
+                  style={styles.durationInput}
+                  value={focusMinutes}
+                  onChangeText={(text) => setFocusMinutes(text.replace(/[^0-9]/g, ""))}
+                  keyboardType="number-pad"
+                  maxLength={3}
+                />
+              </View>
+
+              {/* Break Toggle */}
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <Ionicons name="cafe-outline" size={22} color="#10B981" />
+                  <Text style={styles.settingLabel}>Break Needed?</Text>
+                </View>
+                <Switch
+                  value={isBreakNeeded}
+                  onValueChange={setIsBreakNeeded}
+                  trackColor={{ false: "#E2E8F0", true: "#10B981" }}
+                  thumbColor={"white"}
+                />
+              </View>
+
+              {/* Break Duration Slider */}
+              {isBreakNeeded && (
+                <View style={[styles.settingRow, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={styles.settingLabel}>Break Time</Text>
+                    <Text style={{ color: '#10B981', fontWeight: '700' }}>{breakMinutes} min</Text>
+                  </View>
+                  <Slider
+                    style={{ width: "100%", height: 40 }}
+                    minimumValue={1}
+                    maximumValue={20}
+                    step={1}
+                    value={breakMinutes}
+                    onValueChange={setBreakMinutes}
+                    minimumTrackTintColor="#10B981"
+                    maximumTrackTintColor="#E2E8F0"
+                    thumbTintColor="#10B981"
+                  />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12, color: "#94A3B8" }}>1m</Text>
+                    <Text style={{ fontSize: 12, color: "#94A3B8" }}>20m</Text>
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* Sound Settings */}
             <View style={styles.settingsSection}>
               <Text style={styles.sectionTitle}>Session Settings</Text>
-              
+
               {/* Sound Toggle */}
               <TouchableOpacity
                 style={styles.settingRow}
@@ -405,10 +634,10 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                           </Text>
                         </View>
                       </View>
-                      <Ionicons 
-                        name="play-circle-outline" 
-                        size={24} 
-                        color={selectedSound === sound ? "#4F46E5" : "#999"} 
+                      <Ionicons
+                        name="play-circle-outline"
+                        size={24}
+                        color={selectedSound === sound ? "#4F46E5" : "#999"}
                       />
                     </TouchableOpacity>
                   ))}
@@ -427,7 +656,7 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
               <Ionicons name="close-outline" size={20} color="#64748b" />
               <Text style={styles.taskSkipButtonText}>Skip</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={styles.startButtonWrapper}
               onPress={handleSave}
@@ -661,9 +890,9 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
-  startButtonText: { 
-    color: "white", 
-    fontWeight: "800", 
+  startButtonText: {
+    color: "white",
+    fontWeight: "800",
     fontSize: 17,
     letterSpacing: 0.5,
   },
@@ -1022,6 +1251,23 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  durationInput: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1E293B",
+    width: 80,    textAlign: "center",
+  },
+  helperText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
 

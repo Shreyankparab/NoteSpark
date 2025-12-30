@@ -14,7 +14,8 @@ const AchievementBadge: React.FC<AchievementBadgeProps> = ({
   size = "medium",
 }) => {
   // Determine if the achievement is locked or unlocked
-  const isUnlocked = !!achievement.unlockedAt;
+  // Only show as unlocked if it's been claimed (not just unlocked)
+  const isUnlocked = !!achievement.unlockedAt && !!achievement.isClaimed;
 
   // Set size dimensions based on the size prop
   const getDimensions = () => {

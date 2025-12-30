@@ -27,6 +27,8 @@ interface NotesModalProps {
   completedAt: number;
   imageUrl?: string;
   subjectId?: string;
+  subSubjectId?: string;
+  breakDuration?: number;
 }
 
 const NotesModal: React.FC<NotesModalProps> = ({
@@ -37,6 +39,8 @@ const NotesModal: React.FC<NotesModalProps> = ({
   completedAt,
   imageUrl,
   subjectId,
+  subSubjectId,
+  breakDuration = 0,
 }) => {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -60,7 +64,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
       keyboardDidHideListener.remove();
       // Cleanup voice on unmount
       if (voiceRef.current?.destroy) {
-        voiceRef.current.destroy().catch(() => {});
+        voiceRef.current.destroy().catch(() => { });
       }
     };
   }, []);
@@ -81,7 +85,8 @@ const NotesModal: React.FC<NotesModalProps> = ({
         completedAt,
         userId: user.uid,
         imageUrl: imageUrl || '',
-        };
+        breakDuration: breakDuration,
+      };
 
       // Only add subjectId if it exists
       if (subjectId) {
@@ -91,17 +96,23 @@ const NotesModal: React.FC<NotesModalProps> = ({
         console.log('⚠️ Saving note WITHOUT subjectId');
       }
 
-      console.log('📄 Note data to save:', { 
-        taskTitle: noteData.taskTitle, 
+      // Add subSubjectId if it exists
+      if (subSubjectId) {
+        noteData.subSubjectId = subSubjectId;
+        console.log('📝 Saving note WITH subSubjectId:', subSubjectId);
+      }
+
+      console.log('📄 Note data to save:', {
+        taskTitle: noteData.taskTitle,
         hasSubjectId: !!noteData.subjectId,
-        subjectId: noteData.subjectId 
+        subjectId: noteData.subjectId
       });
 
       await addDoc(collection(db, 'notes'), noteData);
-      
+
       console.log('✅ Note saved successfully');
       Alert.alert('Success', 'Your Pomodoro notes have been saved!');
-      
+
       setNotes('');
       onClose();
     } catch (error) {
@@ -121,7 +132,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
     try {
       // Import and create voice recognition instance
       const { default: VoiceRecognition } = await import('../../utils/voiceRecognition');
-      
+
       if (!VoiceRecognition.isAvailable()) {
         Alert.alert(
           'Speech Recognition Unavailable',
@@ -129,13 +140,13 @@ const NotesModal: React.FC<NotesModalProps> = ({
         );
         return;
       }
-      
+
       if (!voiceRef.current) {
         voiceRef.current = new VoiceRecognition();
       }
-      
+
       const voice = voiceRef.current;
-      
+
       // Set up event handlers
       voice.setCallbacks({
         onStart: () => {
@@ -162,7 +173,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
           Alert.alert('Speech Error', 'Failed to recognize speech. Please try again.');
         },
       });
-      
+
       await voice.start();
     } catch (error) {
       console.error('🎤 Failed to start voice recognition:', error);
@@ -181,10 +192,10 @@ const NotesModal: React.FC<NotesModalProps> = ({
     }
     setIsListening(false);
   };
-  
+
   const handleAISummarize = async () => {
     if (!notes.trim()) return;
-    
+
     setProcessingAI(true);
     try {
       // Process with AI service (will use OpenAI or fallback to Gemini)
@@ -192,9 +203,9 @@ const NotesModal: React.FC<NotesModalProps> = ({
         content: notes,
         type: 'summarize'
       });
-      
+
       setNotes(summarizedNotes);
-      
+
       Alert.alert('Success', `Your notes have been summarized using ${aiService.getCurrentProvider()}!`);
     } catch (error) {
       console.error('Error summarizing notes:', error);
@@ -203,10 +214,10 @@ const NotesModal: React.FC<NotesModalProps> = ({
       setProcessingAI(false);
     }
   };
-  
+
   const handleAIEnhance = async () => {
     if (!notes.trim()) return;
-    
+
     setProcessingAI(true);
     try {
       // Process with AI service (will use OpenAI or fallback to Gemini)
@@ -214,9 +225,9 @@ const NotesModal: React.FC<NotesModalProps> = ({
         content: notes,
         type: 'enhance'
       });
-      
+
       setNotes(enhancedNotes);
-      
+
       Alert.alert('Success', `Your notes have been enhanced using ${aiService.getCurrentProvider()}!`);
     } catch (error) {
       console.error('Error enhancing notes:', error);
@@ -253,7 +264,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
       visible={visible}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.modalContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
@@ -263,15 +274,20 @@ const NotesModal: React.FC<NotesModalProps> = ({
             <Text style={styles.sessionCompleteTitle}>🎉 Session Complete!</Text>
             <Text style={styles.sessionCompleteSubtitle}>Capture your insights</Text>
           </View>
-          
+
           {/* Task info */}
           <View style={styles.taskInfoContainer}>
             <Text style={styles.taskInfoText}>📝 {taskTitle}</Text>
-            <Text style={styles.durationText}>{formatDuration(duration)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.durationText}>🔥 {formatDuration(duration)}</Text>
+              {breakDuration > 0 && (
+                <Text style={[styles.durationText, { color: '#8B5CF6' }]}>☕ {formatDuration(breakDuration)}</Text>
+              )}
+            </View>
           </View>
-          
+
           {/* Scrollable content area */}
-          <ScrollView 
+          <ScrollView
             style={styles.scrollContent}
             contentContainerStyle={styles.scrollContentContainer}
             keyboardShouldPersistTaps="handled"
@@ -285,17 +301,17 @@ const NotesModal: React.FC<NotesModalProps> = ({
                   onPress={isListening ? stopListening : startListening}
                   disabled={isLoading}
                 >
-                  <Ionicons 
-                    name={isListening ? "mic" : "mic-outline"} 
-                    size={20} 
-                    color="white" 
+                  <Ionicons
+                    name={isListening ? "mic" : "mic-outline"}
+                    size={20}
+                    color="white"
                   />
                   <Text style={styles.micButtonText}>
                     {isListening ? 'Listening...' : 'Mic'}
                   </Text>
                 </TouchableOpacity>
               </View>
-              
+
               <TextInput
                 style={styles.notesInputFullScreen}
                 value={notes}
@@ -307,7 +323,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
                 editable={!isLoading}
               />
             </View>
-            
+
             {/* AI Buttons - only show when not keyboard visible */}
             {notes.trim().length > 0 && !keyboardVisible && (
               <View style={styles.aiButtonsRow}>
@@ -341,7 +357,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
             )}
 
           </ScrollView>
-          
+
           {/* Fixed bottom buttons */}
           <View style={styles.bottomButtonsContainer}>
             <TouchableOpacity
@@ -351,8 +367,8 @@ const NotesModal: React.FC<NotesModalProps> = ({
             >
               <Text style={styles.skipButtonText}>Skip</Text>
             </TouchableOpacity>
-            
-            
+
+
             <TouchableOpacity
               style={styles.saveNotesButton}
               onPress={handleSaveNotes}
@@ -370,7 +386,7 @@ const NotesModal: React.FC<NotesModalProps> = ({
           </View>
         </View>
       </KeyboardAvoidingView>
-      
+
     </Modal>
   );
 };

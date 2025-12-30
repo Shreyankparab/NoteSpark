@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import { uploadToCloudinaryBase64 } from "../../utils/imageStorage";
+import { uploadToFirebaseStorage } from "../../utils/imageStorage";
 import { auth } from "../../firebase/firebaseConfig";
 
 interface ImageCaptureModalProps {
@@ -122,7 +122,7 @@ const ImageCaptureModal = ({
 
       setIsSaving(true);
 
-      // If we have an actual image, upload it to Cloudinary
+      // If we have an actual image, upload it to Firebase Storage
       let uploadedUrl: string | undefined;
       if (image) {
         let base64: string | null = null;
@@ -144,15 +144,15 @@ const ImageCaptureModal = ({
           throw new Error("No base64 image data available for upload");
         }
 
-        // Optional: place in folder per user
+        // Upload to Firebase Storage
         const folder = auth.currentUser?.uid
-          ? `notespark/${auth.currentUser.uid}`
-          : "notespark";
-        const url = await uploadToCloudinaryBase64(base64, mimeType, {
+          ? `images/${auth.currentUser.uid}/notes`
+          : "images/notes";
+        const url = await uploadToFirebaseStorage(base64, mimeType, {
           folder,
         });
         uploadedUrl = url;
-        console.log("✅ Cloudinary upload URL:", url);
+        console.log("✅ Firebase Storage upload URL:", url);
       }
 
       // Call onComplete to proceed to notes modal
@@ -194,9 +194,8 @@ const ImageCaptureModal = ({
                   uri:
                     typeof image === "string"
                       ? image
-                      : `data:${image.mimeType || "image/jpeg"};base64,${
-                          image.base64
-                        }`,
+                      : `data:${image.mimeType || "image/jpeg"};base64,${image.base64
+                      }`,
                 }}
                 style={styles.previewImage}
               />

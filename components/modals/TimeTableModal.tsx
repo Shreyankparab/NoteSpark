@@ -31,7 +31,7 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const fadeAnim = useState(new Animated.Value(0))[0];
   const slideAnim = useState(new Animated.Value(50))[0];
-  
+
   // Check if selected date is in the past
   const isPastDate = () => {
     const today = new Date();
@@ -40,7 +40,7 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
     selected.setHours(0, 0, 0, 0);
     return selected < today;
   };
-  
+
   // Load timetable entries from storage
   useEffect(() => {
     if (visible) {
@@ -88,13 +88,13 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
       // Get all entries first
       const storedEntries = await AsyncStorage.getItem(storageKey);
       let allEntries: TimeTableEntry[] = storedEntries ? JSON.parse(storedEntries) : [];
-      
+
       // Remove entries for the selected date
       allEntries = allEntries.filter(entry => entry.date !== selectedDate);
-      
+
       // Add the updated entries for the selected date
       allEntries = [...allEntries, ...updatedEntries];
-      
+
       await AsyncStorage.setItem(storageKey, JSON.stringify(allEntries));
     } catch (error) {
       console.error('Failed to save timetable entries:', error);
@@ -103,13 +103,13 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
 
   const addEntry = () => {
     if (newTitle.trim() === '' || newDuration.trim() === '') return;
-    
+
     const duration = parseFloat(newDuration);
     if (isNaN(duration) || duration <= 0) {
       alert('Please enter a valid duration');
       return;
     }
-    
+
     const newEntry: TimeTableEntry = {
       id: Date.now().toString(),
       title: newTitle,
@@ -117,18 +117,18 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
       completed: false,
       date: selectedDate
     };
-    
+
     const updatedEntries = [...entries, newEntry];
     setEntries(updatedEntries);
     saveEntries(updatedEntries);
-    
+
     // Clear input fields
     setNewTitle('');
     setNewDuration('');
   };
 
   const toggleComplete = (id: string) => {
-    const updatedEntries = entries.map(entry => 
+    const updatedEntries = entries.map(entry =>
       entry.id === id ? { ...entry, completed: !entry.completed } : entry
     );
     setEntries(updatedEntries);
@@ -151,7 +151,7 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
   const totalHours = entries.reduce((sum, entry) => sum + entry.duration, 0);
   const completedHours = entries.filter(e => e.completed).reduce((sum, entry) => sum + entry.duration, 0);
   const completionPercentage = entries.length > 0 ? (entries.filter(e => e.completed).length / entries.length) * 100 : 0;
-  
+
   const isToday = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -168,7 +168,7 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <Animated.View 
+        <Animated.View
           style={[
             styles.modalContainer,
             {
@@ -183,205 +183,205 @@ const TimeTableModal: React.FC<TimeTableModalProps> = ({ visible, onClose, userI
             end={{ x: 1, y: 1 }}
             style={styles.gradientContainer}
           >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1 }}
-          >
-            {/* Header with close button */}
-            <View style={styles.modalHeader}>
-              <View style={styles.headerContent}>
-                <View style={styles.headerIcon}>
-                  <Ionicons name="calendar" size={28} color="#667eea" />
-                </View>
-                <View>
-                  <Text style={styles.modalTitle}>My Timetable</Text>
-                  <Text style={styles.modalSubtitle}>Plan your productive day</Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close-circle" size={32} color="#64748b" />
-              </TouchableOpacity>
-            </View>
-            
-            {/* Date Selector with Status Badge */}
-            <View style={styles.dateSelector}>
-              <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateArrow}>
-                <Ionicons name="chevron-back-circle" size={36} color="#667eea" />
-              </TouchableOpacity>
-              <View style={styles.dateTextContainer}>
-                <Text style={styles.dateText}>
-                  {new Date(selectedDate).toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
-                </Text>
-                <View style={styles.dateBadge}>
-                  {isToday() ? (
-                    <View style={[styles.statusBadge, { backgroundColor: '#4cd964' }]}>
-                      <Ionicons name="today" size={12} color="#fff" />
-                      <Text style={styles.badgeText}>Today</Text>
-                    </View>
-                  ) : isPastDate() ? (
-                    <View style={[styles.statusBadge, { backgroundColor: '#ff6b6b' }]}>
-                      <Ionicons name="time" size={12} color="#fff" />
-                      <Text style={styles.badgeText}>Past</Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.statusBadge, { backgroundColor: '#5ac8fa' }]}>
-                      <Ionicons name="calendar-outline" size={12} color="#fff" />
-                      <Text style={styles.badgeText}>Upcoming</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateArrow}>
-                <Ionicons name="chevron-forward-circle" size={36} color="#667eea" />
-              </TouchableOpacity>
-            </View>
-            
-            {/* Statistics Card */}
-            {entries.length > 0 && (
-              <View style={styles.statsCard}>
-                <View style={styles.statItem}>
-                  <Ionicons name="list" size={20} color="#667eea" />
-                  <Text style={styles.statValue}>{entries.length}</Text>
-                  <Text style={styles.statLabel}>Tasks</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Ionicons name="time" size={20} color="#f59e0b" />
-                  <Text style={styles.statValue}>{totalHours.toFixed(1)}h</Text>
-                  <Text style={styles.statLabel}>Total</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                  <Text style={styles.statValue}>{completionPercentage.toFixed(0)}%</Text>
-                  <Text style={styles.statLabel}>Done</Text>
-                </View>
-              </View>
-            )}
-            
-            {/* Tasks List */}
-            <ScrollView 
-              style={styles.entriesContainer}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1 }}
             >
-              {entries.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconContainer}>
-                    <Ionicons name="calendar-outline" size={80} color="#cbd5e1" />
+              {/* Header with close button */}
+              <View style={styles.modalHeader}>
+                <View style={styles.headerContent}>
+                  <View style={styles.headerIcon}>
+                    <Ionicons name="calendar" size={28} color="#667eea" />
                   </View>
-                  <Text style={styles.emptyStateText}>No tasks scheduled</Text>
-                  <Text style={styles.emptyStateSubtext}>
-                    {isPastDate() 
-                      ? "This day has passed" 
-                      : "Start planning your day by adding tasks below"}
-                  </Text>
+                  <View>
+                    <Text style={styles.modalTitle}>My ToDo List</Text>
+                    <Text style={styles.modalSubtitle}>Plan your productive day</Text>
+                  </View>
                 </View>
-              ) : (
-                entries.map((entry, index) => (
-                  <Animated.View 
-                    key={entry.id} 
-                    style={[
-                      styles.entryItem,
-                      entry.completed && styles.entryItemCompleted
-                    ]}
-                  >
-                    <View style={styles.entryHeader}>
-                      <TouchableOpacity 
-                        onPress={() => toggleComplete(entry.id)}
-                        style={styles.checkboxContainer}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[
-                          styles.checkbox,
-                          entry.completed && styles.checkboxChecked
-                        ]}>
-                          {entry.completed && (
-                            <Ionicons name="checkmark" size={18} color="#fff" />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                      
-                      <View style={styles.entryTextContainer}>
-                        <Text 
-                          style={[
-                            styles.entryTitle,
-                            entry.completed && styles.entryTitleCompleted
-                          ]}
-                        >
-                          {entry.title}
-                        </Text>
-                        <View style={styles.entryMeta}>
-                          <View style={styles.durationBadge}>
-                            <Ionicons name="time-outline" size={14} color="#667eea" />
-                            <Text style={styles.entryDuration}>
-                              {entry.duration} {entry.duration === 1 ? 'hr' : 'hrs'}
-                            </Text>
-                          </View>
-                          {entry.completed && (
-                            <View style={styles.completedBadge}>
-                              <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-                              <Text style={styles.completedText}>Completed</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                      
-                      <TouchableOpacity 
-                        onPress={() => deleteEntry(entry.id)}
-                        style={styles.deleteButton}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="trash" size={22} color="#ff6b6b" />
-                      </TouchableOpacity>
-                    </View>
-                    
-                    {/* Progress indicator for incomplete tasks */}
-                    {!entry.completed && (
-                      <View style={styles.progressIndicator}>
-                        <View style={styles.progressBar} />
-                      </View>
-                    )}
-                  </Animated.View>
-                ))
-              )}
-            </ScrollView>
-            
-            {!isPastDate() ? (
-              <View style={styles.addEntryContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Task name"
-                  placeholderTextColor="#94a3b8"
-                  value={newTitle}
-                  onChangeText={setNewTitle}
-                />
-                <TextInput
-                  style={[styles.input, styles.durationInput]}
-                  placeholder="Hours"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="numeric"
-                  value={newDuration}
-                  onChangeText={setNewDuration}
-                />
-                <TouchableOpacity 
-                  style={styles.addButton}
-                  onPress={addEntry}
-                >
-                  <Ionicons name="add" size={24} color="#fff" />
+                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <Ionicons name="close-circle" size={32} color="#64748b" />
                 </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.pastDateMessage}>
-                <Text style={styles.pastDateText}>Cannot add tasks to past dates</Text>
+
+              {/* Date Selector with Status Badge */}
+              <View style={styles.dateSelector}>
+                <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateArrow}>
+                  <Ionicons name="chevron-back-circle" size={36} color="#667eea" />
+                </TouchableOpacity>
+                <View style={styles.dateTextContainer}>
+                  <Text style={styles.dateText}>
+                    {new Date(selectedDate).toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </Text>
+                  <View style={styles.dateBadge}>
+                    {isToday() ? (
+                      <View style={[styles.statusBadge, { backgroundColor: '#4cd964' }]}>
+                        <Ionicons name="today" size={12} color="#fff" />
+                        <Text style={styles.badgeText}>Today</Text>
+                      </View>
+                    ) : isPastDate() ? (
+                      <View style={[styles.statusBadge, { backgroundColor: '#ff6b6b' }]}>
+                        <Ionicons name="time" size={12} color="#fff" />
+                        <Text style={styles.badgeText}>Past</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.statusBadge, { backgroundColor: '#5ac8fa' }]}>
+                        <Ionicons name="calendar-outline" size={12} color="#fff" />
+                        <Text style={styles.badgeText}>Upcoming</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateArrow}>
+                  <Ionicons name="chevron-forward-circle" size={36} color="#667eea" />
+                </TouchableOpacity>
               </View>
-            )}
-          </KeyboardAvoidingView>
+
+              {/* Statistics Card */}
+              {entries.length > 0 && (
+                <View style={styles.statsCard}>
+                  <View style={styles.statItem}>
+                    <Ionicons name="list" size={20} color="#667eea" />
+                    <Text style={styles.statValue}>{entries.length}</Text>
+                    <Text style={styles.statLabel}>Tasks</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statItem}>
+                    <Ionicons name="time" size={20} color="#f59e0b" />
+                    <Text style={styles.statValue}>{totalHours.toFixed(1)}h</Text>
+                    <Text style={styles.statLabel}>Total</Text>
+                  </View>
+                  <View style={styles.statDivider} />
+                  <View style={styles.statItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                    <Text style={styles.statValue}>{completionPercentage.toFixed(0)}%</Text>
+                    <Text style={styles.statLabel}>Done</Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Tasks List */}
+              <ScrollView
+                style={styles.entriesContainer}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {entries.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <View style={styles.emptyIconContainer}>
+                      <Ionicons name="calendar-outline" size={80} color="#cbd5e1" />
+                    </View>
+                    <Text style={styles.emptyStateText}>No tasks scheduled</Text>
+                    <Text style={styles.emptyStateSubtext}>
+                      {isPastDate()
+                        ? "This day has passed"
+                        : "Start planning your day by adding tasks below"}
+                    </Text>
+                  </View>
+                ) : (
+                  entries.map((entry, index) => (
+                    <Animated.View
+                      key={entry.id}
+                      style={[
+                        styles.entryItem,
+                        entry.completed && styles.entryItemCompleted
+                      ]}
+                    >
+                      <View style={styles.entryHeader}>
+                        <TouchableOpacity
+                          onPress={() => toggleComplete(entry.id)}
+                          style={styles.checkboxContainer}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[
+                            styles.checkbox,
+                            entry.completed && styles.checkboxChecked
+                          ]}>
+                            {entry.completed && (
+                              <Ionicons name="checkmark" size={18} color="#fff" />
+                            )}
+                          </View>
+                        </TouchableOpacity>
+
+                        <View style={styles.entryTextContainer}>
+                          <Text
+                            style={[
+                              styles.entryTitle,
+                              entry.completed && styles.entryTitleCompleted
+                            ]}
+                          >
+                            {entry.title}
+                          </Text>
+                          <View style={styles.entryMeta}>
+                            <View style={styles.durationBadge}>
+                              <Ionicons name="time-outline" size={14} color="#667eea" />
+                              <Text style={styles.entryDuration}>
+                                {entry.duration} {entry.duration === 1 ? 'hr' : 'hrs'}
+                              </Text>
+                            </View>
+                            {entry.completed && (
+                              <View style={styles.completedBadge}>
+                                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
+                                <Text style={styles.completedText}>Completed</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => deleteEntry(entry.id)}
+                          style={styles.deleteButton}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="trash" size={22} color="#ff6b6b" />
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Progress indicator for incomplete tasks */}
+                      {!entry.completed && (
+                        <View style={styles.progressIndicator}>
+                          <View style={styles.progressBar} />
+                        </View>
+                      )}
+                    </Animated.View>
+                  ))
+                )}
+              </ScrollView>
+
+              {!isPastDate() ? (
+                <View style={styles.addEntryContainer}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Task name"
+                    placeholderTextColor="#94a3b8"
+                    value={newTitle}
+                    onChangeText={setNewTitle}
+                  />
+                  <TextInput
+                    style={[styles.input, styles.durationInput]}
+                    placeholder="Hours"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numeric"
+                    value={newDuration}
+                    onChangeText={setNewDuration}
+                  />
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={addEntry}
+                  >
+                    <Ionicons name="add" size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.pastDateMessage}>
+                  <Text style={styles.pastDateText}>Cannot add tasks to past dates</Text>
+                </View>
+              )}
+            </KeyboardAvoidingView>
           </LinearGradient>
         </Animated.View>
       </View>

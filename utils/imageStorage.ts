@@ -1,5 +1,5 @@
 import { storage, auth, functions } from '../firebase/firebaseConfig';
-import { ref, getDownloadURL, listAll, deleteObject } from 'firebase/storage';
+import { ref, getDownloadURL, listAll, deleteObject, uploadBytes } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { getMetadata } from 'firebase/storage';
 import { Alert } from 'react-native';
@@ -39,6 +39,76 @@ export const uploadToCloudinaryBase64 = async (
 };
 
 /**
+ * Uploads base64 image to Firebase Storage and returns the download URL
+ * Uses the React Native compatible approach: base64 → file → fetch → blob → upload
+ * @param base64 Base64 encoded image data (without data URI prefix)
+ * @param mimeType MIME type of the image (e.g., 'image/jpeg')
+ * @param options Upload options including folder path
+ * @returns Download URL of the uploaded image
+ */
+export const uploadToFirebaseStorage = async (
+  base64: string,
+  mimeType: string,
+  options?: { folder?: string }
+): Promise<string> => {
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User must be logged in to upload images');
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substring(2, 10);
+    const extension = mimeType.split('/')[1] || 'jpg';
+    const filename = `${timestamp}_${randomId}.${extension}`;
+
+    // Determine storage path
+    const folder = options?.folder || `images/${user.uid}/notes`;
+    const storagePath = `${folder}/${filename}`;
+
+    // Step 1: Write base64 to temporary file
+    const tempFileUri = `${FileSystem.cacheDirectory}${filename}`;
+    await FileSystem.writeAsStringAsync(tempFileUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    // Step 2: Fetch the file URI to create a blob (React Native compatible)
+    const response = await fetch(tempFileUri);
+    const blob = await response.blob();
+
+    // Step 3: Upload blob to Firebase Storage
+    const imageRef = ref(storage, storagePath);
+    await uploadBytes(imageRef, blob);
+
+    // Step 4: Get download URL
+    const downloadURL = await getDownloadURL(imageRef);
+
+    // Step 5: Clean up temp file
+    try {
+      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
+    } catch (cleanupError) {
+      console.warn('Failed to delete temp file:', cleanupError);
+    }
+
+    console.log('✅ Image uploaded to Firebase Storage:', downloadURL);
+    return downloadURL;
+  } catch (error: any) {
+    console.error('❌ Failed to upload to Firebase Storage:', error);
+    console.error('Error code:', error?.code);
+    console.error('Error message:', error?.message);
+    console.error('Error details:', JSON.stringify(error, null, 2));
+
+    // Check if it's a server response error
+    if (error?.serverResponse) {
+      console.error('Server response:', error.serverResponse);
+    }
+
+    throw error;
+  }
+};
+
+/**
  * Saves an image to Firebase Storage
  * @param imageData Base64 string or URI of the image
  * @param taskTitle Optional title to associate with the image
@@ -50,12 +120,12 @@ export const saveImage = async (imageData: any, taskTitle?: string): Promise<str
     if (!user) {
       throw new Error('User must be logged in to save images');
     }
-    
+
     const timestamp = Date.now();
     const imageName = `${timestamp}_${Math.random().toString(36).substring(2, 10)}`;
     const imagePath = `${IMAGES_PATH}/${user.uid}/${imageName}`;
     const imageRef = ref(storage, imagePath);
-    
+
     // Base metadata shared across uploads
     const baseMetadata = {
       customMetadata: {
@@ -64,7 +134,7 @@ export const saveImage = async (imageData: any, taskTitle?: string): Promise<str
         userId: user.uid
       }
     } as const;
-    
+
     // Create a simple JSON object with timer data
     const timerData = {
       timerData: true,
@@ -72,7 +142,7 @@ export const saveImage = async (imageData: any, taskTitle?: string): Promise<str
       timestamp: timestamp,
       completedAt: Date.now()
     };
-    
+
     // Convert to JSON string regardless of input type
     const jsonString = JSON.stringify(timerData);
     const toBase64 = (input: string): string => {
@@ -92,7 +162,7 @@ export const saveImage = async (imageData: any, taskTitle?: string): Promise<str
       }
     };
     const jsonDataUrl = `data:application/json;base64,${toBase64(jsonString)}`;
-    
+
     // Upload via Cloud Function (callable) to avoid any Blob usage on device
     const uploadImageFn = httpsCallable(functions, 'uploadImage');
 
@@ -138,7 +208,7 @@ export const saveImage = async (imageData: any, taskTitle?: string): Promise<str
         path: imagePath,
       });
     }
-    
+
     console.log('✅ Image saved to Firebase Storage with path:', imagePath);
     return imagePath;
   } catch (error) {
@@ -157,12 +227,12 @@ export const getImage = async (imagePath: string) => {
     const imageRef = ref(storage, imagePath);
     const url = await getDownloadURL(imageRef);
     const metadataResult = await getMetadata(imageRef);
-    
+
     const metadata = metadataResult.customMetadata || {};
-    
-    return { 
-      imageData: url, 
-      metadata 
+
+    return {
+      imageData: url,
+      metadata
     };
   } catch (error) {
     console.error('❌ Failed to get image:', error);
@@ -180,28 +250,28 @@ export const listAllImages = async () => {
     if (!user) {
       throw new Error('User must be logged in to list images');
     }
-    
+
     const userImagesRef = ref(storage, `${IMAGES_PATH}/${user.uid}`);
     const listResult = await listAll(userImagesRef);
-    
+
     const result = await Promise.all(
       listResult.items.map(async (itemRef) => {
         try {
           const metadataResult = await getMetadata(itemRef);
-          return { 
-            path: itemRef.fullPath, 
-            metadata: metadataResult.customMetadata || {} 
+          return {
+            path: itemRef.fullPath,
+            metadata: metadataResult.customMetadata || {}
           };
         } catch (error) {
           console.error('Error getting metadata for', itemRef.fullPath, error);
-          return { 
-            path: itemRef.fullPath, 
-            metadata: {} 
+          return {
+            path: itemRef.fullPath,
+            metadata: {}
           };
         }
       })
     );
-    
+
     return result;
   } catch (error) {
     console.error('❌ Failed to list images:', error);
@@ -232,7 +302,7 @@ export const debugPrintAllImages = async () => {
     const images = await listAllImages();
     console.log('=== STORED IMAGES ===');
     console.log(`Total images: ${images.length}`);
-    
+
     for (const image of images) {
       console.log(`Path: ${image.path}`);
       console.log(`Metadata: ${JSON.stringify(image.metadata, null, 2)}`);

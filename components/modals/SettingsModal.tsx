@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  Modal, 
-  TextInput, 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  TextInput,
   Alert,
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -89,7 +90,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       Alert.alert('Error', 'Failed to save theme preference');
     }
   };
-  
+
   const handleSelectAIProvider = (provider: AIProvider) => {
     setSelectedAIProvider(provider);
     setShowAIOptions(false);
@@ -210,7 +211,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </View>
 
           {/* Content */}
-          <ScrollView 
+          <ScrollView
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
@@ -219,7 +220,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Timer Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Timer</Text>
-              
+
               {renderSettingItem(
                 "timer",
                 "Pomodoro Duration",
@@ -243,7 +244,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Audio Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Audio</Text>
-              
+
               {renderSettingItem(
                 "volume-high",
                 "Completion Sound",
@@ -296,17 +297,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         onPress={() => playCompletionSound(sound as SoundPreset)}
                         style={styles.playButton}
                       >
-                        <Ionicons 
-                          name="play-circle-outline" 
-                          size={20} 
-                          color={selectedSound === sound ? "#6366F1" : "#64748B"} 
+                        <Ionicons
+                          name="play-circle-outline"
+                          size={20}
+                          color={selectedSound === sound ? "#6366F1" : "#64748B"}
                         />
                       </TouchableOpacity>
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
-              
+
               {renderSettingItem(
                 "phone-portrait",
                 "Vibration",
@@ -323,7 +324,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             {/* Appearance Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Appearance</Text>
-              
+
               {renderSettingItem(
                 "color-palette",
                 "Theme",
@@ -340,18 +341,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </TouchableOpacity>,
                 () => setShowAppearanceOptions(!showAppearanceOptions)
               )}
-              
+
               {showAppearanceOptions && (
                 <View style={styles.themeGrid}>
                   {THEMES.map(theme => renderThemePreview(theme))}
                 </View>
               )}
             </View>
-            
+
             {/* AI Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>AI Assistant</Text>
-              
+
               {renderSettingItem(
                 "brain",
                 "AI Provider",
@@ -371,7 +372,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </TouchableOpacity>,
                 () => setShowAIOptions(!showAIOptions)
               )}
-              
+
               {showAIOptions && (
                 <View style={styles.subSection}>
                   <TouchableOpacity
@@ -402,7 +403,47 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </View>
 
-            {/* Save Button */}
+            {/* About & Support Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About & Support</Text>
+
+              {renderSettingItem(
+                "shield-checkmark",
+                "Privacy Policy",
+                "Read our privacy policy",
+                <Ionicons name="open-outline" size={20} color="#94A3B8" />,
+                () => Linking.openURL("https://github.com/Shreyankparab/")
+              )}
+
+              {renderSettingItem(
+                "document-text",
+                "Terms of Service",
+                "Read our terms of service",
+                <Ionicons name="open-outline" size={20} color="#94A3B8" />,
+                () => Linking.openURL("https://github.com/Shreyankparab/")
+              )}
+
+              {renderSettingItem(
+                "mail",
+                "Contact Support",
+                "Need help? Contact us",
+                <Ionicons name="open-outline" size={20} color="#94A3B8" />,
+                () => Linking.openURL("https://github.com/Shreyankparab/")
+              )}
+
+              {renderSettingItem(
+                "information-circle",
+                "About NoteSpark",
+                "Version 1.0.0",
+                <View />,
+                () => Alert.alert("NoteSpark", "Version 1.0.0\n\nDeveloped by Shreyank Parab\n\nFocus. Capture. Grow.")
+              )}
+            </View>
+            <View style={{ height: 20 }} />
+          </ScrollView>
+
+          {/* Floating Save Button Footer */}
+          <View style={styles.footer}>
             <TouchableOpacity
               style={styles.saveButton}
               onPress={handleSave}
@@ -410,7 +451,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               <Ionicons name="checkmark-circle" size={20} color="white" style={{ marginRight: 8 }} />
               <Text style={styles.saveButtonText}>Save & Apply</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -701,12 +742,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#6366F1",
     paddingVertical: 16,
     borderRadius: 12,
-    marginTop: 24,
   },
   saveButtonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "700",
+  },
+  footer: {
+    padding: 20,
+    backgroundColor: "white",
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+    elevation: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
 });
 

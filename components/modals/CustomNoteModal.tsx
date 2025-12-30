@@ -54,7 +54,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
       if (voiceRef.current?.destroy) {
-        voiceRef.current.destroy().catch(() => {});
+        voiceRef.current.destroy().catch(() => { });
       }
     };
   }, []);
@@ -94,7 +94,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
     try {
       // Import and create voice recognition instance
       const { default: VoiceRecognition } = await import('../../utils/voiceRecognition');
-      
+
       if (!VoiceRecognition.isAvailable()) {
         Alert.alert(
           'Speech Recognition Unavailable',
@@ -102,13 +102,13 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
         );
         return;
       }
-      
+
       if (!voiceRef.current) {
         voiceRef.current = new VoiceRecognition();
       }
-      
+
       const voice = voiceRef.current;
-      
+
       // Set up event handlers
       voice.setCallbacks({
         onStart: () => {
@@ -135,7 +135,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
           Alert.alert('Speech Error', 'Failed to recognize speech. Please try again.');
         },
       });
-      
+
       await voice.start();
     } catch (error) {
       console.error('🎤 Failed to start voice recognition:', error);
@@ -161,12 +161,12 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
       Alert.alert("Error", "You must be logged in to save a note.");
       return;
     }
-    
+
     if (!title.trim() && !content.trim()) {
       Alert.alert("Empty Note", "Please add a title or content before saving.");
       return;
     }
-    
+
     setIsSaving(true);
     try {
       const noteData: any = {
@@ -212,13 +212,30 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
       >
         <View style={styles.overlay}>
           <View style={styles.container}>
+            {/* Absolute positioned close button for web */}
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeButtonAbsolute}
+              activeOpacity={0.7}
+              accessibilityLabel="Close modal"
+              accessibilityRole="button"
+            >
+              <Ionicons name="close" size={24} color="#374151" />
+            </TouchableOpacity>
+
             <View style={styles.header}>
               <Text style={styles.title}>✨ New Note</Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                <Ionicons name="close" size={24} color="#6b7280" />
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeButton}
+                activeOpacity={0.7}
+                accessibilityLabel="Close modal"
+                accessibilityRole="button"
+              >
+                <Ionicons name="close" size={28} color="#374151" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView
               style={styles.scrollContent}
               contentContainerStyle={styles.scrollContainer}
@@ -235,7 +252,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
                   />
                 </View>
               ) : null}
-              
+
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>Title</Text>
                 <TextInput
@@ -252,8 +269,8 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
               {subjects.length > 0 && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Subject (Optional)</Text>
-                  <ScrollView 
-                    horizontal 
+                  <ScrollView
+                    horizontal
                     showsHorizontalScrollIndicator={false}
                     style={styles.subjectScroll}
                   >
@@ -293,7 +310,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
                   </ScrollView>
                 </View>
               )}
-              
+
               <View style={styles.inputGroup}>
                 <View style={styles.editorHeader}>
                   <Text style={styles.label}>Content</Text>
@@ -302,10 +319,10 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
                     onPress={isListening ? stopListening : startListening}
                     disabled={isSaving}
                   >
-                    <Ionicons 
-                      name={isListening ? "mic" : "mic-outline"} 
-                      size={18} 
-                      color="white" 
+                    <Ionicons
+                      name={isListening ? "mic" : "mic-outline"}
+                      size={18}
+                      color="white"
                     />
                     <Text style={styles.micText}>
                       {isListening ? "Listening..." : "Mic"}
@@ -324,7 +341,7 @@ const CustomNoteModal: React.FC<CustomNoteModalProps> = ({
                 />
               </View>
             </ScrollView>
-            
+
             <View style={styles.actions}>
               <TouchableOpacity
                 style={[styles.button, styles.cancel]}
@@ -383,13 +400,55 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e5e7eb",
   },
-  title: { 
-    fontSize: 20, 
-    fontWeight: "700", 
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
     color: "#111827",
   },
   closeButton: {
-    padding: 4,
+    padding: 8,
+    borderRadius: 22,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 2,
+    borderColor: "#d1d5db",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 44,
+    height: 44,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    // Web-specific styles
+    cursor: "pointer",
+    userSelect: "none",
+    display: "flex",
+    flexShrink: 0,
+  },
+  closeButtonAbsolute: {
+    position: "absolute",
+    top: 15,
+    right: 15,
+    zIndex: 1000,
+    elevation: 1000,
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: "#ffffff",
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 40,
+    height: 40,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    // elevation: 5,
+    cursor: "pointer",
+    userSelect: "none",
+    display: "flex",
   },
   scrollContent: {
     flex: 1,
@@ -411,9 +470,9 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 20,
   },
-  label: { 
-    fontSize: 14, 
-    fontWeight: "600", 
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
     color: "#374151",
     marginBottom: 8,
   },
@@ -426,8 +485,8 @@ const styles = StyleSheet.create({
     color: "#111827",
     backgroundColor: "#f9fafb",
   },
-  textarea: { 
-    height: 160, 
+  textarea: {
+    height: 160,
     textAlignVertical: "top",
     minHeight: 160,
   },
@@ -476,17 +535,17 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 5,
   },
-  micActive: { 
+  micActive: {
     backgroundColor: "#ef4444",
   },
-  micText: { 
-    color: "white", 
+  micText: {
+    color: "white",
     fontWeight: "600",
     fontSize: 13,
   },
-  actions: { 
-    flexDirection: "row", 
-    justifyContent: "flex-end", 
+  actions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 12,
     padding: 20,
     paddingTop: 16,
@@ -494,12 +553,12 @@ const styles = StyleSheet.create({
     borderTopColor: "#e5e7eb",
     backgroundColor: "#f9fafb",
   },
-  button: { 
+  button: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 20, 
-    paddingVertical: 12, 
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderRadius: 10,
     gap: 6,
     minWidth: 100,
@@ -509,7 +568,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#d1d5db",
   },
-  save: { 
+  save: {
     backgroundColor: "#2196F3",
     shadowColor: "#2196F3",
     shadowOffset: { width: 0, height: 2 },
@@ -517,13 +576,13 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  buttonTextCancel: { 
-    color: "#374151", 
+  buttonTextCancel: {
+    color: "#374151",
     fontWeight: "600",
     fontSize: 15,
   },
-  buttonTextSave: { 
-    color: "white", 
+  buttonTextSave: {
+    color: "white",
     fontWeight: "700",
     fontSize: 15,
   },
