@@ -13,7 +13,7 @@ const DEFAULT_PROVIDER: AIProvider = 'gemini';
 const DEFAULT_OPENAI_CREDITS = 100; // Example credit limit
 
 // API Keys
-const GEMINI_API_KEY = 'AIzaSyAWR-Q86DP1l9R6CPpVOdlRUR58ssPY0w8';
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 
 // Interface for AI processing options
 interface AIProcessingOptions {
@@ -27,11 +27,11 @@ interface AIProcessingOptions {
 class AIService {
   private currentProvider: AIProvider = DEFAULT_PROVIDER;
   private openaiCredits: number = DEFAULT_OPENAI_CREDITS;
-  
+
   constructor() {
     this.loadSettings();
   }
-  
+
   /**
    * Load saved settings from AsyncStorage
    */
@@ -41,11 +41,11 @@ class AIService {
         AsyncStorage.getItem(AI_PROVIDER_KEY),
         AsyncStorage.getItem(OPENAI_CREDITS_KEY)
       ]);
-      
+
       if (providerValue) {
         this.currentProvider = providerValue as AIProvider;
       }
-      
+
       if (creditsValue) {
         this.openaiCredits = parseInt(creditsValue, 10);
       }
@@ -53,7 +53,7 @@ class AIService {
       console.error('Error loading AI settings:', error);
     }
   }
-  
+
   /**
    * Save current settings to AsyncStorage
    */
@@ -67,14 +67,14 @@ class AIService {
       console.error('Error saving AI settings:', error);
     }
   }
-  
+
   /**
    * Get current AI provider
    */
   public getCurrentProvider(): AIProvider {
     return this.currentProvider;
   }
-  
+
   /**
    * Set AI provider manually
    */
@@ -82,14 +82,14 @@ class AIService {
     this.currentProvider = provider;
     await this.saveSettings();
   }
-  
+
   /**
    * Get remaining OpenAI credits
    */
   public getOpenAICredits(): number {
     return this.openaiCredits;
   }
-  
+
   /**
    * Process text with AI (summarize or enhance)
    */
@@ -103,11 +103,11 @@ class AIService {
         'You\'ve run out of OpenAI credits. NoteSpark has automatically switched to Gemini.'
       );
     }
-    
+
     // Process with selected provider
     try {
       let result: string;
-      
+
       if (this.currentProvider === 'openai') {
         result = await this.processWithOpenAI(options);
         // Decrease credits after successful processing
@@ -116,11 +116,11 @@ class AIService {
       } else {
         result = await this.processWithGemini(options);
       }
-      
+
       return result;
     } catch (error) {
       console.error(`Error processing with ${this.currentProvider}:`, error);
-      
+
       // If OpenAI fails, try Gemini as fallback
       if (this.currentProvider === 'openai') {
         this.currentProvider = 'gemini';
@@ -131,20 +131,20 @@ class AIService {
         );
         return this.processWithGemini(options);
       }
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Process text with OpenAI
    */
   private async processWithOpenAI(options: AIProcessingOptions): Promise<string> {
     // In a real implementation, you would call the OpenAI API here
     // This is a simulation for demonstration purposes
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     // Non-templated fallback to avoid repetitive outputs when OpenAI path is used
     const sentences = options.content.split(/(?<=[.!?])\s+/).filter(Boolean);
     if (options.type === 'summarize') {
@@ -156,7 +156,7 @@ class AIService {
       return `${excerpt}\n\nInsight: A key factor in ${topic.toLowerCase()} is clarifying objectives and constraints before execution.`;
     }
   }
-  
+
   /**
    * Extract the main topic from content
    */
@@ -164,22 +164,22 @@ class AIService {
     // Simple extraction of potential topic from first sentence
     const firstSentence = content.split('.')[0] || content;
     const words = firstSentence.split(' ');
-    
+
     // Look for capitalized words that might be topics
-    const potentialTopics = words.filter(word => 
-      word.length > 3 && 
-      word[0] === word[0].toUpperCase() && 
+    const potentialTopics = words.filter(word =>
+      word.length > 3 &&
+      word[0] === word[0].toUpperCase() &&
       !['The', 'This', 'That', 'These', 'Those', 'When', 'Where', 'Why', 'How', 'What'].includes(word)
     );
-    
+
     if (potentialTopics.length > 0) {
       return potentialTopics[0].replace(/[^a-zA-Z ]/g, '');
     }
-    
+
     // Fallback to first two words if no capitalized words found
     return (words.slice(0, 2).join(' ') || 'The topic').replace(/[^a-zA-Z ]/g, '');
   }
-  
+
   /**
    * Process text with Gemini
    */
@@ -188,11 +188,11 @@ class AIService {
       // Real Gemini API implementation using the API key
       const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
       const url = `${endpoint}?key=${GEMINI_API_KEY}`;
-      
-      const prompt = options.type === 'summarize' 
+
+      const prompt = options.type === 'summarize'
         ? `You are a precise editor. Summarize faithfully in 3-7 bullet points. Do not invent facts. If the text is too short, noisy, or lacks meaning, respond: "Insufficient content to summarize." Text:\n\n${options.content}`
         : `You are an expert writing coach. Improve clarity, cohesion, and depth without changing meaning. Expand with 1-2 brief, concrete insights tied to the text. Do not fabricate facts. If the text is too short, respond: "Insufficient content to enhance." Text:\n\n${options.content}`;
-      
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -215,18 +215,18 @@ class AIService {
           }
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(`Gemini API error: ${data.error?.message || 'Unknown error'}`);
       }
-      
+
       const result = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim?.() || '';
       return result || (options.type === 'summarize' ? 'Insufficient content to summarize.' : options.content);
     } catch (error) {
       console.error('Error calling Gemini API:', error);
-      
+
       // Fallback: simple extractive summary/enhancement to avoid templated outputs
       const sentences = options.content.split(/(?<=[.!?])\s+/).filter(Boolean);
       if (options.type === 'summarize') {

@@ -26,6 +26,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  updateProfile,
   signOut,
 } from "firebase/auth";
 import {
@@ -168,17 +169,21 @@ const registerTimerTask = async () => {
   console.log("Background timer task registered.");
 };
 
-const createInitialUserDocument = async (userId: string) => {
+// Initial User Doc Creation
+const createInitialUserDocument = async (userId: string, displayName?: string, phoneNumber?: string) => {
   try {
     const userRef = doc(db, "users", userId);
-    await setDoc(
-      userRef,
-      {
-        streak: 1,
-        lastActive: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const userData: any = {
+      streak: 1,
+      lastActive: serverTimestamp(),
+      storageUsed: 0,
+      storageLimit: 524288000 // 500MB default
+    };
+
+    if (displayName) userData.displayName = displayName;
+    if (phoneNumber) userData.phoneNumber = phoneNumber;
+
+    await setDoc(userRef, userData, { merge: true });
   } catch (error) {
     console.error("Failed to create user document:", error);
   }
@@ -194,7 +199,7 @@ const checkTaskAchievementsOnLoad = async (userId: string, completedTasksCount: 
   }
 };
 
-const updateStreak = async (userId: string): Promise<number> => {
+const getStreak = async (userId: string): Promise<number> => {
   try {
     const userRef = doc(db, "users", userId);
     const userSnap = await getDoc(userRef);
@@ -202,64 +207,115 @@ const updateStreak = async (userId: string): Promise<number> => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    const newActiveTimestamp = serverTimestamp();
 
     if (!userSnap.exists()) {
+      // New user - initialize with 0 streak
       await setDoc(userRef, {
-        streak: 1,
-        lastActive: newActiveTimestamp,
-        activeDays: [todayStr],
+        streak: 0,
+        lastActive: null,
+        activeDays: [],
         streakStartDate: todayStr
       });
-      return 1;
+      return 0;
     }
 
+    // Recalculate streak based on activeDays to ensure consistency
+    // This fixes any previous double-counting bugs
     const data = userSnap.data();
     const lastActive = data?.lastActive?.toDate ? data.lastActive.toDate() : null;
     let streak = data?.streak || 0;
     let activeDays = (data?.activeDays || []) as string[];
-    let streakStartDate = data?.streakStartDate || todayStr;
 
+    // If already active today, return current streak
     if (activeDays.includes(todayStr)) {
       return streak;
     }
 
-    if (!lastActive) {
+    // Check if streak is broken
+    if (lastActive) {
+      const yesterday = new Date(today.getTime());
+      yesterday.setDate(yesterday.getDate() - 1);
+      const lastActiveDay = new Date(lastActive.getTime());
+      lastActiveDay.setHours(0, 0, 0, 0);
+
+      // If last active was before yesterday, streak is broken
+      if (lastActiveDay.getTime() < yesterday.getTime()) {
+        // Reset streak to 0 (will be set to 1 when task is completed)
+        streak = 0;
+        activeDays = [];
+
+        await updateDoc(userRef, {
+          streak: 0,
+          activeDays: [],
+          streakStartDate: todayStr
+        });
+      }
+    }
+
+    // Recalculate streak based on activeDays to ensure consistency
+    // This fixes any previous double-counting bugs
+    const uniqueDays = Array.from(new Set(activeDays)).sort();
+    let calculatedStreak = 0;
+
+    // Check backwards from today to find consecutive days
+    const todayDate = new Date(today);
+    let cursor = new Date(todayDate);
+
+    // Loop to find streak
+    while (true) {
+      const cursorStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+      if (uniqueDays.includes(cursorStr)) {
+        calculatedStreak++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        // If today is not active, we shouldn't count it for "current streak" UNLESS
+        // the streak was valid up to yesterday.
+        // But getStreak is called on login. If they haven't done a task today, 
+        // the streak should display what they had yesterday (if valid).
+        // However, the standard definition of "current streak" usually implies "days in a row ending today".
+        // If I miss today, is my streak 0?
+        // Usually, apps show the streak "at risk".
+
+        // NoteSpark Logic:
+        // If I logged in today but haven't done task:
+        // Streak should be X (from yesterday).
+        // If I miss today completely, tomorrow it becomes 0.
+
+        // So: If calculatedStreak is 0 (meaning today is NOT in activeDays), 
+        // we should check if yesterday starts the chain.
+        if (calculatedStreak === 0) {
+          const yesterday = new Date(todayDate);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+
+          if (uniqueDays.includes(yesterdayStr)) {
+            // Streak implies consecutive days ending yesterday
+            cursor = new Date(yesterday);
+            // Let the next loop iteration start counting from yesterday
+            continue;
+          }
+        }
+        break;
+      }
+    }
+
+    // Update if mismatch found (Self-Healing)
+    if (calculatedStreak !== streak) {
+      console.log(`Auto-fixing streak for ${userId}: was ${streak}, now ${calculatedStreak}`);
       await updateDoc(userRef, {
-        streak: 1,
-        lastActive: newActiveTimestamp,
-        activeDays: [todayStr],
-        streakStartDate: todayStr
+        streak: calculatedStreak,
+        streakStartDate: data?.streakStartDate || todayStr // Keep original start date or default
       });
-      return 1;
+      return calculatedStreak;
     }
 
-    const yesterday = new Date(today.getTime());
-    yesterday.setDate(yesterday.getDate() - 1);
-    const lastActiveDay = new Date(lastActive.getTime());
-    lastActiveDay.setHours(0, 0, 0, 0);
-
-    if (lastActiveDay.getTime() === yesterday.getTime()) {
-      streak += 1;
-      activeDays = [...activeDays, todayStr];
-    } else if (lastActiveDay.getTime() < yesterday.getTime()) {
-      streak = 1;
-      activeDays = [todayStr];
-      streakStartDate = todayStr;
-    }
-
-    await updateDoc(userRef, {
-      streak,
-      lastActive: newActiveTimestamp,
-      activeDays,
-      streakStartDate
-    });
     return streak;
   } catch (error) {
     console.error("Streak error:", error);
     return 0;
   }
 };
+
 
 export default function TimerScreen() {
   // --- Timer State ---
@@ -802,7 +858,7 @@ export default function TimerScreen() {
       setUser(currentUser);
       if (currentUser) {
         setShowAuthModal(false);
-        const updatedStreak = await updateStreak(currentUser.uid);
+        const updatedStreak = await getStreak(currentUser.uid);
         setStreak(updatedStreak);
 
         // Migrate old achievements to composite ID format (one-time operation)
@@ -882,7 +938,15 @@ export default function TimerScreen() {
         email,
         password
       );
-      await createInitialUserDocument(userCredential.user.uid);
+
+      // Update the user's profile with the display name immediately
+      if (name) {
+        await updateProfile(userCredential.user, {
+          displayName: name
+        });
+      }
+
+      await createInitialUserDocument(userCredential.user.uid, name, phone);
       Alert.alert("Success", "Account created and logged in!");
     } catch (error) {
       Alert.alert("Error", (error as Error).message);
@@ -1176,23 +1240,58 @@ export default function TimerScreen() {
 
         setCurrentTask(null);
 
-        // Update Streak Logic (simplified from previous)
-        const today = new Date().toDateString();
-        const lastDate = await AsyncStorage.getItem("lastStreakDate");
-        let newStreak = streak;
+        // Update Streak Logic using Firestore activeDays array
+        const userRef = doc(db, "users", user.uid);
+        const userSnap = await getDoc(userRef);
+        const data = userSnap.data();
 
-        if (lastDate !== today) {
-          newStreak = streak + 1;
-          setStreak(newStreak);
-          await AsyncStorage.setItem("lastStreakDate", today);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
-          const userRef = doc(db, "users", user.uid);
-          await setDoc(userRef, { streak: newStreak, lastStreakDate: serverTimestamp() }, { merge: true });
+        let currentStreak = data?.streak || 0;
+        let activeDays = (data?.activeDays || []) as string[];
+        let streakStartDate = data?.streakStartDate || todayStr;
+
+        // Only increment if today is NOT in activeDays
+        if (!activeDays.includes(todayStr)) {
+          const lastActive = data?.lastActive?.toDate ? data.lastActive.toDate() : null;
+
+          if (lastActive) {
+            const yesterday = new Date(today.getTime());
+            yesterday.setDate(yesterday.getDate() - 1);
+            const lastActiveDay = new Date(lastActive.getTime());
+            lastActiveDay.setHours(0, 0, 0, 0);
+
+            if (lastActiveDay.getTime() === yesterday.getTime()) {
+              // Consecutive day - increment
+              currentStreak += 1;
+            } else if (lastActiveDay.getTime() < yesterday.getTime()) {
+              // Streak broken - reset
+              currentStreak = 1;
+              activeDays = [];
+              streakStartDate = todayStr;
+            }
+          } else {
+            // First ever task
+            currentStreak = 1;
+          }
+
+          activeDays = [...activeDays, todayStr];
+
+          await updateDoc(userRef, {
+            streak: currentStreak,
+            lastActive: serverTimestamp(),
+            activeDays,
+            streakStartDate
+          });
+
+          setStreak(currentStreak);
         }
 
         // Check Achievements
         try {
-          const newStreakAchievements = await checkStreakAchievements(user.uid, newStreak);
+          const newStreakAchievements = await checkStreakAchievements(user.uid, currentStreak);
           const newFocusAchievements = await checkFocusTimeAchievements(user.uid, totalFocusMinutes || 0);
           const allNew = [...newStreakAchievements, ...newFocusAchievements];
           if (allNew.length > 0) {
@@ -2050,6 +2149,7 @@ export default function TimerScreen() {
                   keyboardType="phone-pad"
                   value={phone}
                   onChangeText={setPhone}
+                  maxLength={10}
                   editable={!isLoading}
                 />
               </>

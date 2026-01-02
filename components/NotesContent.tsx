@@ -42,6 +42,8 @@ import { aiService } from "../utils/aiService";
 import { uploadToFirebaseStorage } from "../utils/imageStorage";
 import { Ionicons } from "@expo/vector-icons";
 import { Theme } from "../constants/themes";
+import StorageWarningModal from "./modals/StorageWarningModal";
+import { isStorageFull, DEFAULT_STORAGE_LIMIT } from "../utils/storageTracker";
 
 interface NotesContentProps {
   onOpenProfile?: () => void;
@@ -62,7 +64,71 @@ const NotesContent: React.FC<NotesContentProps> = ({
 }) => {
   const [notes, setNotes] = useState<PomodoroNote[]>([]);
   const [userProfileImage, setUserProfileImage] = useState<string | null>(null);
-  const [filteredNotes, setFilteredNotes] = useState<PomodoroNote[]>([]);
+  const [filteredNotes, setFilteredNotes] = useState<PomodoroNote[]>([]); // Final display list
+
+  // Storage Enforcement State
+  const [showStorageWarning, setShowStorageWarning] = useState(false);
+  const [currentUsage, setCurrentUsage] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_STORAGE_LIMIT);
+  const [pendingUpload, setPendingUpload] = useState<{ asset: any, folder: string, onComplete: (url: string) => void } | null>(null);
+
+
+
+  // Helper: Perform the actual upload
+  const performUpload = async (asset: any, folder: string, onComplete: (url: string) => void) => {
+    try {
+      setIsUploading(true);
+      const url = await uploadToFirebaseStorage(
+        asset.base64,
+        asset.mimeType || "image/jpeg",
+        { folder }
+      );
+      onComplete(url);
+    } catch (e) {
+      console.error("Upload failed:", e);
+      Alert.alert("Error", "Upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Helper: Check storage before uploading
+  const handleSafeImageUpload = async (asset: any, folder: string, onComplete: (url: string) => void) => {
+    if (!auth.currentUser) return;
+
+    // Check Storage
+    try {
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const userData = userDoc.data();
+      const usage = userData?.storageUsed || 0;
+      const userLimit = userData?.storageLimit || DEFAULT_STORAGE_LIMIT;
+
+      setCurrentUsage(usage);
+      setLimit(userLimit);
+
+      if (isStorageFull(usage, userLimit)) {
+        setPendingUpload({ asset, folder, onComplete });
+        setShowStorageWarning(true);
+        return;
+      }
+
+      // Proceed if safe
+      performUpload(asset, folder, onComplete);
+
+    } catch (e) {
+      console.error("Storage check failed", e);
+      performUpload(asset, folder, onComplete);
+    }
+  };
+
+  const handleWatchAd = () => {
+    setShowStorageWarning(false);
+    if (pendingUpload) {
+      performUpload(pendingUpload.asset, pendingUpload.folder, pendingUpload.onComplete);
+      setPendingUpload(null);
+    }
+  };
+
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [subSubjects, setSubSubjects] = useState<SubSubject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
@@ -1000,7 +1066,6 @@ const NotesContent: React.FC<NotesContentProps> = ({
                 style={styles.optionCard}
                 onPress={async () => {
                   try {
-                    setIsUploading(true);
                     const { status } =
                       await ImagePicker.requestMediaLibraryPermissionsAsync();
                     if (status !== "granted") {
@@ -1014,23 +1079,18 @@ const NotesContent: React.FC<NotesContentProps> = ({
                     });
                     if (!result.canceled) {
                       const asset: any = result.assets[0];
-                      const url = await uploadToFirebaseStorage(
-                        asset.base64,
-                        asset.mimeType || "image/jpeg",
-                        {
-                          folder: auth.currentUser
-                            ? `images/${auth.currentUser.uid}/notes`
-                            : "images/notes",
-                        }
-                      );
-                      setNewNoteImageUrl(url);
-                      setShowCreateOptions(false);
-                      setShowCustomNoteModal(true);
+                      const folder = auth.currentUser
+                        ? `images/${auth.currentUser.uid}/notes`
+                        : "images/notes";
+
+                      handleSafeImageUpload(asset, folder, (url) => {
+                        setNewNoteImageUrl(url);
+                        setShowCreateOptions(false);
+                        setShowCustomNoteModal(true);
+                      });
                     }
                   } catch (e) {
                     Alert.alert("Image", "Failed to pick image.");
-                  } finally {
-                    setIsUploading(false);
                   }
                 }}
               >
@@ -1045,7 +1105,6 @@ const NotesContent: React.FC<NotesContentProps> = ({
                 style={styles.optionCard}
                 onPress={async () => {
                   try {
-                    setIsUploading(true);
                     const { status } =
                       await ImagePicker.requestCameraPermissionsAsync();
                     if (status !== "granted") {
@@ -1059,23 +1118,18 @@ const NotesContent: React.FC<NotesContentProps> = ({
                     });
                     if (!result.canceled) {
                       const asset: any = result.assets[0];
-                      const url = await uploadToFirebaseStorage(
-                        asset.base64,
-                        asset.mimeType || "image/jpeg",
-                        {
-                          folder: auth.currentUser
-                            ? `images/${auth.currentUser.uid}/notes`
-                            : "images/notes",
-                        }
-                      );
-                      setNewNoteImageUrl(url);
-                      setShowCreateOptions(false);
-                      setShowCustomNoteModal(true);
+                      const folder = auth.currentUser
+                        ? `images/${auth.currentUser.uid}/notes`
+                        : "images/notes";
+
+                      handleSafeImageUpload(asset, folder, (url) => {
+                        setNewNoteImageUrl(url);
+                        setShowCreateOptions(false);
+                        setShowCustomNoteModal(true);
+                      });
                     }
                   } catch (e) {
                     Alert.alert("Camera", "Failed to capture image.");
-                  } finally {
-                    setIsUploading(false);
                   }
                 }}
               >
@@ -1220,7 +1274,6 @@ const NotesContent: React.FC<NotesContentProps> = ({
                         <TouchableOpacity
                           onPress={async () => {
                             try {
-                              setIsUploading(true);
                               const { status } =
                                 await ImagePicker.requestMediaLibraryPermissionsAsync();
                               if (status !== "granted") {
@@ -1237,19 +1290,16 @@ const NotesContent: React.FC<NotesContentProps> = ({
                                 });
                               if (!result.canceled) {
                                 const asset: any = result.assets[0];
-                                const url = await uploadToFirebaseStorage(
-                                  asset.base64,
-                                  asset.mimeType || "image/jpeg",
-                                  {
-                                    folder: auth.currentUser
-                                      ? `images/${auth.currentUser.uid}/notes`
-                                      : "images/notes",
-                                  }
-                                );
-                                setEditImageUrl(url);
+                                const folder = auth.currentUser
+                                  ? `images/${auth.currentUser.uid}/notes`
+                                  : "images/notes";
+
+                                handleSafeImageUpload(asset, folder, (url) => {
+                                  setEditImageUrl(url);
+                                });
                               }
-                            } finally {
-                              setIsUploading(false);
+                            } catch (e) {
+                              console.error(e)
                             }
                           }}
                           style={styles.detailActionBtn}
@@ -1260,7 +1310,6 @@ const NotesContent: React.FC<NotesContentProps> = ({
                         <TouchableOpacity
                           onPress={async () => {
                             try {
-                              setIsUploading(true);
                               const { status } =
                                 await ImagePicker.requestCameraPermissionsAsync();
                               if (status !== "granted") {
@@ -1273,19 +1322,16 @@ const NotesContent: React.FC<NotesContentProps> = ({
                               });
                               if (!result.canceled) {
                                 const asset: any = result.assets[0];
-                                const url = await uploadToFirebaseStorage(
-                                  asset.base64,
-                                  asset.mimeType || "image/jpeg",
-                                  {
-                                    folder: auth.currentUser
-                                      ? `images/${auth.currentUser.uid}/notes`
-                                      : "images/notes",
-                                  }
-                                );
-                                setEditImageUrl(url);
+                                const folder = auth.currentUser
+                                  ? `images/${auth.currentUser.uid}/notes`
+                                  : "images/notes";
+
+                                handleSafeImageUpload(asset, folder, (url) => {
+                                  setEditImageUrl(url);
+                                });
                               }
-                            } finally {
-                              setIsUploading(false);
+                            } catch (e) {
+                              console.error(e)
                             }
                           }}
                           style={styles.detailActionBtn}
@@ -1433,6 +1479,14 @@ const NotesContent: React.FC<NotesContentProps> = ({
           </GestureHandlerRootView>
         </Modal>
       )}
+
+      <StorageWarningModal
+        visible={showStorageWarning}
+        onClose={() => setShowStorageWarning(false)}
+        onWatchAd={handleWatchAd}
+        currentUsage={currentUsage}
+        limit={limit}
+      />
 
     </View>
   );
@@ -2394,14 +2448,18 @@ const ZoomableImage: React.FC<ZoomableImageProps> = ({
                 </TouchableOpacity>
               )}
 
-              {/* Drawing Toolbar (Bottom) */}
-              {renderTools()}
+              {/* Render tools if drawing */}
+              {isDrawingMode && renderTools()}
+
             </View>
           </View>
         )}
       </DrawingOverlay>
+
+
     </View>
   );
-
 };
+
+
 export default NotesContent;

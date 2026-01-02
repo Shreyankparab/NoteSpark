@@ -14,6 +14,11 @@ import * as ImagePicker from "expo-image-picker";
 import { uploadToFirebaseStorage } from "../../utils/imageStorage";
 import { auth } from "../../firebase/firebaseConfig";
 
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebase/firebaseConfig";
+import StorageWarningModal from "./StorageWarningModal";
+import { isStorageFull, DEFAULT_STORAGE_LIMIT } from "../../utils/storageTracker";
+
 interface ImageCaptureModalProps {
   visible: boolean;
   onClose: () => void;
@@ -36,6 +41,11 @@ const ImageCaptureModal = ({
     string | { base64: string; mimeType?: string } | null
   >(null);
   const [isCapturing, setIsCapturing] = useState(false);
+
+  // Storage Warning State
+  const [showStorageWarning, setShowStorageWarning] = useState(false);
+  const [currentUsage, setCurrentUsage] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_STORAGE_LIMIT);
 
   const pickImage = async () => {
     setIsCapturing(true);
@@ -108,20 +118,9 @@ const ImageCaptureModal = ({
     }
   };
 
-  const handleSaveImage = async () => {
+  const performUpload = async () => {
+    setIsSaving(true);
     try {
-      // Check if user is logged in
-      if (!auth.currentUser) {
-        Alert.alert(
-          "Login Required",
-          "You need to be logged in to save images. Please log in and try again.",
-          [{ text: "OK", onPress: onClose }]
-        );
-        return;
-      }
-
-      setIsSaving(true);
-
       // If we have an actual image, upload it to Firebase Storage
       let uploadedUrl: string | undefined;
       if (image) {
@@ -164,6 +163,55 @@ const ImageCaptureModal = ({
       setIsSaving(false);
       onClose();
     }
+  };
+
+  const handleSaveImage = async () => {
+    // Check if user is logged in
+    if (!auth.currentUser) {
+      Alert.alert(
+        "Login Required",
+        "You need to be logged in to save images. Please log in and try again.",
+        [{ text: "OK", onPress: onClose }]
+      );
+      return;
+    }
+
+    if (!image) {
+      // No image selected, just proceed
+      onComplete();
+      onClose();
+      return;
+    }
+
+    // Check Storage Limit
+    try {
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const userData = userDoc.data();
+      const usage = userData?.storageUsed || 0;
+      const userLimit = userData?.storageLimit || DEFAULT_STORAGE_LIMIT;
+
+      setCurrentUsage(usage);
+      setLimit(userLimit);
+
+      if (isStorageFull(usage, userLimit)) {
+        setShowStorageWarning(true);
+        return;
+      }
+
+      // If not full, proceed
+      performUpload();
+
+    } catch (e) {
+      console.error("Failed to check storage:", e);
+      // On error, let them pass? Or block? Let's block to be safe or pass.
+      // For MVP, if check fails, maybe just try upload.
+      performUpload();
+    }
+  };
+
+  const handleWatchAd = () => {
+    setShowStorageWarning(false);
+    performUpload();
   };
 
   const handleSkip = () => {
@@ -323,6 +371,14 @@ const ImageCaptureModal = ({
           </View>
         </View>
       </View>
+
+      <StorageWarningModal
+        visible={showStorageWarning}
+        onClose={() => setShowStorageWarning(false)}
+        onWatchAd={handleWatchAd}
+        currentUsage={currentUsage}
+        limit={limit}
+      />
     </Modal>
   );
 };

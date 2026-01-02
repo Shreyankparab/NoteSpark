@@ -13,11 +13,13 @@ import {
   Platform,
   Keyboard,
 } from 'react-native';
-import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/firebaseConfig';
 import { PomodoroNote } from '../../types';
 import { aiService } from '../../utils/aiService';
 import { Ionicons } from '@expo/vector-icons';
+import StorageWarningModal from './StorageWarningModal';
+import { isStorageFull, DEFAULT_STORAGE_LIMIT } from '../../utils/storageTracker';
 
 interface NotesModalProps {
   visible: boolean;
@@ -47,6 +49,12 @@ const NotesModal: React.FC<NotesModalProps> = ({
   const [isListening, setIsListening] = useState(false);
   const [processingAI, setProcessingAI] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Storage Warning State
+  const [showStorageWarning, setShowStorageWarning] = useState(false);
+  const [currentStorageUsage, setCurrentStorageUsage] = useState(0);
+  const [storageLimit, setStorageLimit] = useState(DEFAULT_STORAGE_LIMIT);
+
   const voiceRef = useRef<any>(null);
 
   useEffect(() => {
@@ -69,12 +77,9 @@ const NotesModal: React.FC<NotesModalProps> = ({
     };
   }, []);
 
-  const handleSaveNotes = async () => {
+  const saveNoteToFirestore = async () => {
     const user = auth.currentUser;
-    if (!user) {
-      Alert.alert('Error', 'You must be logged in to save notes.');
-      return;
-    }
+    if (!user) return;
 
     setIsLoading(true);
     try {
@@ -88,25 +93,8 @@ const NotesModal: React.FC<NotesModalProps> = ({
         breakDuration: breakDuration,
       };
 
-      // Only add subjectId if it exists
-      if (subjectId) {
-        noteData.subjectId = subjectId;
-        console.log('📝 Saving note WITH subjectId:', subjectId);
-      } else {
-        console.log('⚠️ Saving note WITHOUT subjectId');
-      }
-
-      // Add subSubjectId if it exists
-      if (subSubjectId) {
-        noteData.subSubjectId = subSubjectId;
-        console.log('📝 Saving note WITH subSubjectId:', subSubjectId);
-      }
-
-      console.log('📄 Note data to save:', {
-        taskTitle: noteData.taskTitle,
-        hasSubjectId: !!noteData.subjectId,
-        subjectId: noteData.subjectId
-      });
+      if (subjectId) noteData.subjectId = subjectId;
+      if (subSubjectId) noteData.subSubjectId = subSubjectId;
 
       await addDoc(collection(db, 'notes'), noteData);
 
@@ -123,9 +111,51 @@ const NotesModal: React.FC<NotesModalProps> = ({
     }
   };
 
+  const handleSaveNotes = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to save notes.');
+      return;
+    }
+
+    // Check Storage Limit if there is an image
+    if (imageUrl) {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.data();
+        const usage = userData?.storageUsed || 0;
+        const limit = userData?.storageLimit || DEFAULT_STORAGE_LIMIT;
+
+        setCurrentStorageUsage(usage);
+        setStorageLimit(limit);
+
+        if (isStorageFull(usage, limit)) {
+          // Determine image size (rough estimate or fetch) to be accurate?
+          // For now, simpler: checking if *already* full. 
+          // Strict check: usage + newImageSize > limit.
+          // But for mvp, simply checking if current usage is already at/over limit.
+          setShowStorageWarning(true);
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to check storage:", e);
+      }
+    }
+
+    await saveNoteToFirestore();
+  };
+
+  const handleWatchAd = () => {
+    // Logic for watching ad success
+    setShowStorageWarning(false);
+    // Proceed to save
+    saveNoteToFirestore();
+  };
+
   const handleSkip = () => {
     onClose();
   };
+
 
 
   const startListening = async () => {
@@ -387,6 +417,13 @@ const NotesModal: React.FC<NotesModalProps> = ({
         </View>
       </KeyboardAvoidingView>
 
+      <StorageWarningModal
+        visible={showStorageWarning}
+        onClose={() => setShowStorageWarning(false)}
+        onWatchAd={handleWatchAd}
+        currentUsage={currentStorageUsage}
+        limit={storageLimit}
+      />
     </Modal>
   );
 };

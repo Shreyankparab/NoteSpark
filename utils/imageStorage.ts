@@ -1,5 +1,6 @@
-import { storage, auth, functions } from '../firebase/firebaseConfig';
+import { storage, auth, functions, db } from '../firebase/firebaseConfig';
 import { ref, getDownloadURL, listAll, deleteObject, uploadBytes } from 'firebase/storage';
+import { doc, updateDoc, increment } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getMetadata } from 'firebase/storage';
 import { Alert } from 'react-native';
@@ -84,7 +85,19 @@ export const uploadToFirebaseStorage = async (
     // Step 4: Get download URL
     const downloadURL = await getDownloadURL(imageRef);
 
-    // Step 5: Clean up temp file
+    // Step 5: Update User Storage Usage
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        storageUsed: increment(blob.size)
+      });
+      console.log(`📊 Storage usage incremented by ${blob.size} bytes`);
+    } catch (storageError) {
+      console.error('⚠️ Failed to update storage usage counter:', storageError);
+      // We don't throw here to avoid failing the upload if just the counter fails
+    }
+
+    // Step 6: Clean up temp file
     try {
       await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
     } catch (cleanupError) {

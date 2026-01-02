@@ -12,6 +12,8 @@ import AchievementBadge from "../AchievementBadge";
 import { Achievement } from "../../types";
 import StreaksScreen from "../../screens/StreaksScreen";
 import AchievementsScreen from "../../screens/AchievementsScreen";
+import StorageUsageBar from "../StorageUsageBar";
+import { calculateTotalStorage, DEFAULT_STORAGE_LIMIT } from "../../utils/storageTracker";
 
 interface ProfileModalProps {
   visible: boolean;
@@ -41,6 +43,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const [loadingAchievements, setLoadingAchievements] = useState(false);
   const [showStreaksScreen, setShowStreaksScreen] = useState(false);
   const [showAchievementsScreen, setShowAchievementsScreen] = useState(false);
+  const [storageUsed, setStorageUsed] = useState<number>(0);
+  const [storageLimit, setStorageLimit] = useState<number>(DEFAULT_STORAGE_LIMIT);
 
   // Hydrate profile data from Firestore and keep it in sync
   useEffect(() => {
@@ -54,6 +58,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         setDisplayName(data.displayName);
       } else if (user?.displayName) {
         setDisplayName(user.displayName);
+      }
+
+      // Storage Tracking
+      if (data?.storageUsed !== undefined) {
+        setStorageUsed(data.storageUsed);
+      } else {
+        // Migration: Calculate if missing
+        calculateTotalStorage(user.uid);
+      }
+
+      if (data?.storageLimit) {
+        setStorageLimit(data.storageLimit);
       }
     });
     return unsub;
@@ -125,6 +141,23 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       setSavingName(false);
     }
   };
+
+  const [refreshingStorage, setRefreshingStorage] = useState(false);
+
+  const handleRefreshStorage = async () => {
+    if (!user?.uid) return;
+    setRefreshingStorage(true);
+    try {
+      const total = await calculateTotalStorage(user.uid);
+      setStorageUsed(total);
+      // Optional: Show a subtle toast or just let the number update speak for itself
+    } catch (e) {
+      console.error("Failed to refresh storage:", e);
+    } finally {
+      setRefreshingStorage(false);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -197,6 +230,15 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
               />
             </View>
           </View>
+
+          {/* Storage Usage Bar */}
+          <StorageUsageBar
+            usedBytes={storageUsed}
+            limitBytes={storageLimit}
+            containerStyle={{ marginBottom: 24 }}
+            onRefresh={handleRefreshStorage}
+            isRefreshing={refreshingStorage}
+          />
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionHeading}>Achievements</Text>
