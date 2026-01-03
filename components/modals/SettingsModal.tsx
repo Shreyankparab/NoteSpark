@@ -12,6 +12,7 @@ import {
   Platform,
   Dimensions,
   Linking,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -39,6 +40,8 @@ interface SettingsModalProps {
   onSelectAIProvider?: (provider: AIProvider) => void;
   currentTheme: Theme;
   onThemeChange: (themeId: string) => void;
+  onOpenProfile?: () => void;
+  userProfileImage?: string | null;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -54,6 +57,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onSelectSound,
   currentTheme,
   onThemeChange,
+  onOpenProfile,
+  userProfileImage,
 }) => {
   const [minutesInput, setMinutesInput] = useState(String(initialMinutes));
   const [showSoundOptions, setShowSoundOptions] = useState(false);
@@ -116,7 +121,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   );
 
   const renderSettingItem = (
-    icon: string,
+    icon: string | React.ReactNode,
     title: string,
     subtitle: string,
     rightComponent: React.ReactNode,
@@ -130,7 +135,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     >
       <View style={styles.settingLeft}>
         <View style={styles.settingIcon}>
-          <Ionicons name={icon as any} size={20} color="#6366F1" />
+          {typeof icon === 'string' ? (
+            <Ionicons name={icon as any} size={20} color="#6366F1" />
+          ) : (
+            icon
+          )}
         </View>
         <View style={styles.settingContent}>
           <Text style={styles.settingTitle}>{title}</Text>
@@ -217,6 +226,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            {/* Account Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Account</Text>
+              {renderSettingItem(
+                userProfileImage ? (
+                  <Image
+                    source={{ uri: userProfileImage }}
+                    style={{ width: 24, height: 24, borderRadius: 12 }}
+                  />
+                ) : (
+                  "person-circle"
+                ),
+                "User Profile",
+                "View and manage your profile",
+                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />,
+                onOpenProfile
+              )}
+            </View>
+
             {/* Timer Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Timer</Text>
@@ -249,13 +277,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 "volume-high",
                 "Completion Sound",
                 "Play sound when timer ends",
-                renderToggleButton(
-                  isSoundOn,
-                  "#10B981",
-                  "volume-high",
-                  "volume-mute",
-                  () => onToggleSound(!isSoundOn)
-                ),
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {renderToggleButton(
+                    isSoundOn,
+                    "#10B981",
+                    "volume-high",
+                    "volume-mute",
+                    () => onToggleSound(!isSoundOn)
+                  )}
+                  <Ionicons
+                    name={showSoundOptions ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color="#64748B"
+                  />
+                </View>,
                 () => setShowSoundOptions(!showSoundOptions)
               )}
 
@@ -349,12 +384,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </View>
 
-            {/* AI Section */}
-            <View style={styles.section}>
+            {/* AI Section - Temporarily Disabled */}
+            {/* <View style={styles.section}>
               <Text style={styles.sectionTitle}>AI Assistant</Text>
 
               {renderSettingItem(
-                "brain",
+                "bulb",
                 "AI Provider",
                 "Choose your AI service",
                 <TouchableOpacity
@@ -401,7 +436,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   </TouchableOpacity>
                 </View>
               )}
-            </View>
+            </View> */}
 
             {/* About & Support Section */}
             <View style={styles.section}>

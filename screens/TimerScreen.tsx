@@ -2019,29 +2019,7 @@ export default function TimerScreen() {
             >
               <Ionicons name="folder-outline" size={24} color="white" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowProfileModal(true)}
-              style={{ marginRight: 16 }}
-            >
-              {user?.photoURL ? (
-                <Image
-                  source={{ uri: user.photoURL }}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.8)",
-                  }}
-                />
-              ) : (
-                <Ionicons
-                  name="person-circle-outline"
-                  size={28}
-                  color="white"
-                />
-              )}
-            </TouchableOpacity>
+
             <TouchableOpacity onPress={() => setShowSettingsModal(true)}>
               <Ionicons name="settings-outline" size={22} color="white" />
             </TouchableOpacity>
@@ -2248,6 +2226,11 @@ export default function TimerScreen() {
           const theme = getThemeById(themeId);
           setCurrentTheme(theme);
         }}
+        onOpenProfile={() => {
+          setShowSettingsModal(false);
+          setTimeout(() => setShowProfileModal(true), 300);
+        }}
+        userProfileImage={user?.photoURL}
       />
 
       <ProfileModal

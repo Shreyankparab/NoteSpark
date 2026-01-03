@@ -3,7 +3,7 @@ import { ref, getDownloadURL, listAll, deleteObject, uploadBytes } from 'firebas
 import { doc, updateDoc, increment } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { getMetadata } from 'firebase/storage';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
 // Storage paths
@@ -65,18 +65,38 @@ export const uploadToFirebaseStorage = async (
     const filename = `${timestamp}_${randomId}.${extension}`;
 
     // Determine storage path
+    // Determine storage path
     const folder = options?.folder || `images/${user.uid}/notes`;
     const storagePath = `${folder}/${filename}`;
 
-    // Step 1: Write base64 to temporary file
-    const tempFileUri = `${FileSystem.cacheDirectory}${filename}`;
-    await FileSystem.writeAsStringAsync(tempFileUri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    let blob: Blob;
 
-    // Step 2: Fetch the file URI to create a blob (React Native compatible)
-    const response = await fetch(tempFileUri);
-    const blob = await response.blob();
+    if (Platform.OS === 'web') {
+      // WEB SPECIFIC: Direct conversion from base64/dataURL to Blob
+      // If pure base64, prepend header
+      const base64Str = base64.startsWith('data:')
+        ? base64
+        : `data:${mimeType};base64,${base64}`;
+
+      const res = await fetch(base64Str);
+      blob = await res.blob();
+    } else {
+      // MOBILE SPECIFIC: Use FileSystem to handle large files efficiently
+      // Step 1: Write base64 to temporary file
+      const tempFileUri = `${FileSystem.cacheDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(tempFileUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Step 2: Fetch the file URI to create a blob
+      const response = await fetch(tempFileUri);
+      blob = await response.blob();
+
+      // Clean up async (fire and forget for mobile)
+      FileSystem.deleteAsync(tempFileUri, { idempotent: true }).catch(err =>
+        console.warn('Failed to delete temp file:', err)
+      );
+    }
 
     // Step 3: Upload blob to Firebase Storage
     const imageRef = ref(storage, storagePath);
@@ -84,6 +104,7 @@ export const uploadToFirebaseStorage = async (
 
     // Step 4: Get download URL
     const downloadURL = await getDownloadURL(imageRef);
+    console.log('✅ Image uploaded to Firebase Storage:', downloadURL);
 
     // Step 5: Update User Storage Usage
     try {
@@ -94,17 +115,8 @@ export const uploadToFirebaseStorage = async (
       console.log(`📊 Storage usage incremented by ${blob.size} bytes`);
     } catch (storageError) {
       console.error('⚠️ Failed to update storage usage counter:', storageError);
-      // We don't throw here to avoid failing the upload if just the counter fails
     }
 
-    // Step 6: Clean up temp file
-    try {
-      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
-    } catch (cleanupError) {
-      console.warn('Failed to delete temp file:', cleanupError);
-    }
-
-    console.log('✅ Image uploaded to Firebase Storage:', downloadURL);
     return downloadURL;
   } catch (error: any) {
     console.error('❌ Failed to upload to Firebase Storage:', error);

@@ -354,8 +354,8 @@ const NotesModal: React.FC<NotesModalProps> = ({
               />
             </View>
 
-            {/* AI Buttons - only show when not keyboard visible */}
-            {notes.trim().length > 0 && !keyboardVisible && (
+            {/* AI Buttons - Temporarily Disabled */}
+            {notes.trim().length > 0 && !keyboardVisible && false && (
               <View style={styles.aiButtonsRow}>
                 {processingAI ? (
                   <View style={styles.aiButton}>

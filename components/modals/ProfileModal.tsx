@@ -165,7 +165,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <ScrollView style={styles.profileModalFull} contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView style={styles.profileModalFull} contentContainerStyle={{ paddingBottom: 100 }}>
         <View style={styles.profileModalHeaderFull}>
           <View style={styles.profileModalHeader}>
             <Text style={styles.profileModalTitle}>User Profile</Text>

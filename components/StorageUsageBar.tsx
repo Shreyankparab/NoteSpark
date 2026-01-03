@@ -48,7 +48,11 @@ const StorageUsageBar: React.FC<StorageUsageBarProps> = ({
                     )}
                 </View>
                 <Text style={styles.usageText}>
-                    {formatBytes(usedBytes)} <Text style={styles.limitText}>/ {formatBytes(limitBytes)}</Text>
+                    {usedBytes >= limitBytes ? (
+                        <Text style={[styles.usageText, { color: '#ef4444' }]}>size full</Text>
+                    ) : (
+                        <>{formatBytes(usedBytes)} <Text style={styles.limitText}>of {formatBytes(limitBytes)}</Text></>
+                    )}
                 </Text>
             </View>
 

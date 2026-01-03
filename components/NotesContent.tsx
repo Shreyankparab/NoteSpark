@@ -744,29 +744,14 @@ const NotesContent: React.FC<NotesContentProps> = ({
                 <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
                 >
-                  <TouchableOpacity onPress={onOpenAppearance}>
-                    <Ionicons name="color-palette-outline" size={24} color="#fff" />
-                  </TouchableOpacity>
+
                   <TouchableOpacity onPress={onOpenTimeTable}>
                     <Ionicons name="calendar-outline" size={24} color="#fff" />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={onOpenSubjects}>
                     <Ionicons name="folder-outline" size={24} color="#fff" />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={onOpenProfile}>
-                    {userProfileImage ? (
-                      <Image
-                        source={{ uri: userProfileImage }}
-                        style={styles.profileImage}
-                      />
-                    ) : (
-                      <Ionicons
-                        name="person-circle-outline"
-                        size={26}
-                        color="#fff"
-                      />
-                    )}
-                  </TouchableOpacity>
+
                   <TouchableOpacity onPress={onOpenSettings}>
                     <Ionicons name="settings-outline" size={24} color="#fff" />
                   </TouchableOpacity>
@@ -1400,7 +1385,9 @@ const NotesContent: React.FC<NotesContentProps> = ({
                     <Ionicons name="pencil-outline" size={20} color="#111827" />
                     <Text style={styles.bottomIconText}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
+
+                  {/* AI Summarize - Temporarily Disabled */}
+                  {/* <TouchableOpacity
                     onPress={handleSummarizeCurrent}
                     style={styles.bottomIconBtn}
                   >
@@ -1413,8 +1400,9 @@ const NotesContent: React.FC<NotesContentProps> = ({
                         color="#111827"
                       />
                     )}
-                    <Text style={styles.bottomIconText}>Summarize</Text>
-                  </TouchableOpacity>
+                  </TouchableOpacity> */}
+                  {/* <Text style={styles.bottomIconText}>Summarize</Text>
+                  </TouchableOpacity> */}
                   <TouchableOpacity
                     onPress={toggleDrawingMode}
                     style={styles.bottomIconBtn}
@@ -1433,52 +1421,56 @@ const NotesContent: React.FC<NotesContentProps> = ({
                 </>
               )}
             </View>
-          )}
-        </Modal>
-      )}
+          )
+          }
+        </Modal >
+      )
+      }
 
 
 
 
-        // ... (render) ...
+// ... (render) ...
 
       {/* Zoomable Image Viewer - Higher z-index for web */}
-      {!!zoomImageUrl && (
-        <Modal
-          visible={!!zoomImageUrl}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
-            setZoomImageUrl(null);
-            setIsImageDrawingMode(false);
-          }}
-        >
-          <GestureHandlerRootView style={styles.zoomOverlay}>
+      {
+        !!zoomImageUrl && (
+          <Modal
+            visible={!!zoomImageUrl}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              setZoomImageUrl(null);
+              setIsImageDrawingMode(false);
+            }}
+          >
+            <GestureHandlerRootView style={styles.zoomOverlay}>
 
 
-            {/* Full screen image container */}
-            <View style={styles.zoomImageContainer}>
-              {zoomImageUrl ? (
-                <ZoomableImage
-                  uri={zoomImageUrl}
-                  isDrawingMode={isImageDrawingMode}
-                  onToggleDrawingMode={() => {
-                    if (isImageDrawingMode) {
-                      handleFinalizeImageDrawing();
-                    } else {
-                      setIsImageDrawingMode(true);
-                    }
-                  }}
-                  drawingData={imageDrawings[zoomImageUrl] || null}
-                  onSaveDrawing={handleSaveImageDrawing}
-                  isSaving={isSavingImageDrawing}
-                  onClose={() => setZoomImageUrl(null)}
-                />
-              ) : null}
-            </View>
-          </GestureHandlerRootView>
-        </Modal>
-      )}
+              {/* Full screen image container */}
+              <View style={styles.zoomImageContainer}>
+                {zoomImageUrl ? (
+                  <ZoomableImage
+                    uri={zoomImageUrl}
+                    isDrawingMode={isImageDrawingMode}
+                    onToggleDrawingMode={() => {
+                      if (isImageDrawingMode) {
+                        handleFinalizeImageDrawing();
+                      } else {
+                        setIsImageDrawingMode(true);
+                      }
+                    }}
+                    drawingData={imageDrawings[zoomImageUrl] || null}
+                    onSaveDrawing={handleSaveImageDrawing}
+                    isSaving={isSavingImageDrawing}
+                    onClose={() => setZoomImageUrl(null)}
+                  />
+                ) : null}
+              </View>
+            </GestureHandlerRootView>
+          </Modal>
+        )
+      }
 
       <StorageWarningModal
         visible={showStorageWarning}
@@ -1488,7 +1480,7 @@ const NotesContent: React.FC<NotesContentProps> = ({
         limit={limit}
       />
 
-    </View>
+    </View >
   );
 };
 

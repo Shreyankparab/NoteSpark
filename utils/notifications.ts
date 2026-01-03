@@ -34,7 +34,7 @@ export const scheduleTimerNotification = async (remainingSeconds: number, taskTi
 
     const timeText = formatTimeForNotification(remainingSeconds);
     const taskText = taskTitle ? ` - ${taskTitle}` : '';
-    
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `🍅 Pomodoro Timer - ${timeText}`,
@@ -76,14 +76,39 @@ export const scheduleTimerCompletionNotification = async (
   durationInSeconds: number,
   taskTitle?: string
 ) => {
-  // Skip notifications entirely in Expo Go
-  if (isExpoGo) {
+  // Skip notifications entirely in Expo Go (except we might want to allow web fallback even in Expo Go if running on web?)
+  if (isExpoGo && Platform.OS !== 'web') {
     console.log("📱 Expo Go - completion notification skipped");
     return null;
   }
 
   try {
     const taskText = taskTitle ? ` - ${taskTitle}` : '';
+
+    // WEB FALLBACK: Use native Browser Notification API if Expo Notifications might struggle without SW
+    if (Platform.OS === 'web') {
+      console.log("Here (Web) - Trying Browser Notification");
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification("⏰ Timer Complete!", {
+            body: `Great work! Your focus session is complete${taskText}`,
+            icon: '/pwa-192x192.png', // Fallback icon path if available
+          });
+          return 'web-notification-id';
+        } else if (Notification.permission !== 'denied') {
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            new Notification("⏰ Timer Complete!", {
+              body: `Great work! Your focus session is complete${taskText}`
+            });
+            return 'web-notification-id';
+          }
+        }
+      }
+      return null;
+    }
+
+    // NATIVE / MOBILE
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: "⏰ Timer Complete!",
@@ -102,7 +127,7 @@ export const scheduleTimerCompletionNotification = async (
         seconds: durationInSeconds,
       },
     });
-    
+
     console.log(`🔔 Scheduled completion notification for ${durationInSeconds}s - ID: ${notificationId}`);
     return notificationId;
   } catch (error) {
@@ -159,7 +184,7 @@ export const setupNotifications = async () => {
         },
       ]);
     }
-    
+
     console.log("🔔 Notifications setup completed successfully");
   } catch (error) {
     console.warn("⚠️ Notification setup failed:", error);
