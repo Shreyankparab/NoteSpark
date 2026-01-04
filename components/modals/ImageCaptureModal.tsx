@@ -42,6 +42,13 @@ const ImageCaptureModal = ({
   >(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
+  // Reset image when modal opens
+  React.useEffect(() => {
+    if (visible) {
+      setImage(null);
+    }
+  }, [visible]);
+
   // Storage Warning State
   const [showStorageWarning, setShowStorageWarning] = useState(false);
   const [currentUsage, setCurrentUsage] = useState(0);

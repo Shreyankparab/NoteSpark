@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 interface FlipDeviceOverlayProps {
   isActive: boolean;
   flipDeviceEnabled: boolean;
+  onFlipChange?: (isFlipped: boolean) => void;
   onTimeout: () => void; // Called when 10 seconds run out without flipping
 }
 
@@ -21,6 +22,7 @@ const FlipDeviceOverlay: React.FC<FlipDeviceOverlayProps> = ({
   isActive,
   flipDeviceEnabled,
   onTimeout,
+  onFlipChange,
 }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [flipCountdown, setFlipCountdown] = useState(10);
@@ -40,6 +42,7 @@ const FlipDeviceOverlay: React.FC<FlipDeviceOverlayProps> = ({
       }
       setShowWarning(false);
       setIsFlipped(false);
+      if (onFlipChange) onFlipChange(false);
       return;
     }
 
@@ -53,18 +56,20 @@ const FlipDeviceOverlay: React.FC<FlipDeviceOverlayProps> = ({
 
       if (isFaceDown && !isFlipped) {
         setIsFlipped(true);
+        if (onFlipChange) onFlipChange(true);
         setShowWarning(false);
         setFlipCountdown(10);
-        
+
         // Haptic feedback
         if (Platform.OS === "ios") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
       } else if (isFaceUp && isFlipped) {
         setIsFlipped(false);
+        if (onFlipChange) onFlipChange(false);
         setShowWarning(true);
         setFlipCountdown(10);
-        
+
         // Haptic feedback
         if (Platform.OS === "ios") {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -98,7 +103,7 @@ const FlipDeviceOverlay: React.FC<FlipDeviceOverlayProps> = ({
 
     // Start countdown when device is not flipped
     setShowWarning(true);
-    
+
     flipTimerRef.current = setInterval(() => {
       setFlipCountdown((prev) => {
         if (prev <= 1) {

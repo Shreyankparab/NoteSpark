@@ -20,6 +20,7 @@ interface TimerContentProps {
   onAbandonTask: () => void;
   onAddOneMinute: () => void;
   theme: Theme;
+  areControlsHidden?: boolean;
 }
 
 const TimerContent: React.FC<TimerContentProps> = ({
@@ -35,6 +36,7 @@ const TimerContent: React.FC<TimerContentProps> = ({
   onAbandonTask,
   onAddOneMinute,
   theme,
+  areControlsHidden = false,
 }) => {
   const [showAddMinute, setShowAddMinute] = useState(false);
   // Show automatically in the final 30 seconds of the countdown
@@ -53,7 +55,7 @@ const TimerContent: React.FC<TimerContentProps> = ({
   };
 
   // Determine button text color based on button background
-  const startButtonTextColor = isLightColor(theme.timerCircleColor) 
+  const startButtonTextColor = isLightColor(theme.timerCircleColor)
     ? theme.accentColor // Use accent color for text on light backgrounds
     : theme.textColor; // Use theme text color for dark backgrounds
 
@@ -70,14 +72,14 @@ const TimerContent: React.FC<TimerContentProps> = ({
               { color: theme.secondaryTextColor }
             ]}>Current Task:</Text>
             <View style={styles.taskActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={onAbandonTask}
                 style={styles.actionButton}
                 activeOpacity={0.6}
               >
                 <Ionicons name="close-circle-outline" size={20} color={theme.secondaryTextColor || "rgba(255,255,255,0.6)"} />
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={onEditTask}
                 style={styles.actionButton}
                 activeOpacity={0.6}
@@ -153,36 +155,38 @@ const TimerContent: React.FC<TimerContentProps> = ({
         </TouchableOpacity>
       </View>
 
-      <View style={{ flexDirection: "row", marginTop: 40 }}>
-        <TouchableOpacity
-          style={[
-            styles.startButton,
-            { backgroundColor: theme.timerCircleColor }
-          ]}
-          onPress={handleStartPause}
-          disabled={isLoading}
-        >
-          <Text style={[
-            styles.startButtonText,
-            { color: startButtonTextColor }
-          ]}>
-            {isActive ? "Pause" : "Start"}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.resetButton,
-            { backgroundColor: theme.accentColor }
-          ]}
-          onPress={handleReset}
-          disabled={isLoading}
-        >
-          <Text style={[
-            styles.resetButtonText,
-            { color: theme.timerCircleColor }
-          ]}>Reset</Text>
-        </TouchableOpacity>
-      </View>
+      {!areControlsHidden && (
+        <View style={{ flexDirection: "row", marginTop: 40 }}>
+          <TouchableOpacity
+            style={[
+              styles.startButton,
+              { backgroundColor: theme.timerCircleColor }
+            ]}
+            onPress={handleStartPause}
+            disabled={isLoading}
+          >
+            <Text style={[
+              styles.startButtonText,
+              { color: startButtonTextColor }
+            ]}>
+              {isActive ? "Pause" : "Start"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.resetButton,
+              { backgroundColor: theme.accentColor }
+            ]}
+            onPress={handleReset}
+            disabled={isLoading}
+          >
+            <Text style={[
+              styles.resetButtonText,
+              { color: theme.timerCircleColor }
+            ]}>Reset</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };

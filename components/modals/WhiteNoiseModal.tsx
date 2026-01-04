@@ -113,6 +113,18 @@ const WhiteNoiseModal: React.FC<WhiteNoiseModalProps> = ({
 
   const handlePreviewSound = (sound: WhiteNoiseType) => {
     if (sound === "None") return;
+
+    // Toggle off if already previewing this sound
+    if (currentlyPreviewing === sound) {
+      if (previewSound) {
+        previewSound.stopAsync();
+        previewSound.unloadAsync();
+        setPreviewSound(null);
+        setCurrentlyPreviewing(null);
+      }
+      return;
+    }
+
     playPreview(sound);
   };
 
@@ -137,8 +149,8 @@ const WhiteNoiseModal: React.FC<WhiteNoiseModalProps> = ({
             isSelected
               ? ["#6366F1", "#8B5CF6"]
               : isPreview
-              ? ["#10B981", "#059669"]
-              : ["#F8FAFC", "#E2E8F0"]
+                ? ["#10B981", "#059669"]
+                : ["#F8FAFC", "#E2E8F0"]
           }
           style={styles.soundCardGradient}
         >
@@ -198,7 +210,7 @@ const WhiteNoiseModal: React.FC<WhiteNoiseModalProps> = ({
                   />
                 </TouchableOpacity>
               )}
-              
+
               {isSelected && (
                 <View style={styles.selectedIndicator}>
                   <Ionicons name="checkmark-circle" size={20} color="white" />

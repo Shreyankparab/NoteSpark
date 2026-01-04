@@ -333,6 +333,8 @@ export default function TimerScreen() {
     SOUND_PRESETS[0]
   );
   const [isFlipDeviceOn, setIsFlipDeviceOn] = useState(false);
+  const [areControlsHidden, setAreControlsHidden] = useState(false);
+  const [isDeviceFlipped, setIsDeviceFlipped] = useState(false);
 
   // --- UI/Auth State ---
   const [user, setUser] = useState<User | null>(null);
@@ -519,6 +521,8 @@ export default function TimerScreen() {
             completedAt: data.completedAt,
             status: data.status,
             userId: data.userId,
+            subjectId: data.subjectId,
+            subSubjectId: data.subSubjectId,
           });
         });
 
@@ -738,6 +742,10 @@ export default function TimerScreen() {
       } catch (error) {
         console.error("Failed to play sound", error);
       }
+    }
+
+    if (isVibrationOn) {
+      Vibration.vibrate([0, 500, 200, 500]);
     }
 
     if (timerMode === "focus") {
@@ -1077,15 +1085,22 @@ export default function TimerScreen() {
   };
 
   // Stop white noise function
+  // Stop white noise function
   const stopWhiteNoise = async () => {
     if (whiteNoiseSound) {
+      const sound = whiteNoiseSound;
+      setWhiteNoiseSound(null); // Optimistically clear state
       try {
-        await whiteNoiseSound.stopAsync();
-        await whiteNoiseSound.unloadAsync();
-        setWhiteNoiseSound(null);
+        await sound.stopAsync();
+        await sound.unloadAsync();
         console.log('🔇 White noise stopped');
-      } catch (error) {
-        console.error('❌ Failed to stop white noise:', error);
+      } catch (error: any) {
+        // Ignore "not loaded" errors which are common race conditions
+        if (error.message && error.message.includes('not loaded')) {
+          console.log('⚠️ White noise already unloaded');
+        } else {
+          console.log('⚠️ Warning stopping white noise:', error.message);
+        }
       }
     }
   };
@@ -1121,6 +1136,33 @@ export default function TimerScreen() {
   }, [isActive, selectedWhiteNoise]);
 
   // Removed Expo hook response handler
+
+  // Handle Flip Mode UI Hiding and State
+  // Handle Flip Mode UI Hiding and State
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+
+    if (isActive && isFlipDeviceOn) {
+      // If active and flip mode on, hide controls after 10s regardless of current flip state
+      timeout = setTimeout(() => {
+        setAreControlsHidden(true);
+      }, 10000);
+    } else if (!isActive) {
+      // Reset if paused/stopped
+      setAreControlsHidden(false);
+    }
+
+    return () => clearTimeout(timeout);
+  }, [isActive, isFlipDeviceOn]);
+
+  // Handle Flip State Change (from Overlay)
+  const handleFlipChange = (flipped: boolean) => {
+    setIsDeviceFlipped(flipped);
+    if (!flipped) {
+      // If flipped back up (Face Up), show controls
+      setAreControlsHidden(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -1210,6 +1252,7 @@ export default function TimerScreen() {
 
     await AsyncStorage.removeItem(TIMER_END_TIME_KEY);
     await AsyncStorage.removeItem(TIMER_STATUS_KEY);
+    setSeconds(initialTime); // Reset timer to initial config
     cancelTimerNotification();
     if (completionNotificationId) await cancelTimerCompletionNotification(completionNotificationId);
 
@@ -1310,6 +1353,7 @@ export default function TimerScreen() {
       duration,
       completedAt,
       subjectId: taskSubjectId,
+      subSubjectId: currentTask?.subSubjectId,
       breakDuration: sessionBreakDuration,
       imageUrl: undefined, // Clear old image to show fresh image selection
     });
@@ -1494,7 +1538,7 @@ export default function TimerScreen() {
   };
 
   // Handler to add a custom task with pending status
-  const handleAddCustomTask = async (title: string, duration: number, subjectId?: string) => {
+  const handleAddCustomTask = async (title: string, duration: number, subjectId?: string, subSubjectId?: string) => {
     if (!user) {
       Alert.alert("Error", "Please sign in to add tasks.");
       return;
@@ -1512,6 +1556,10 @@ export default function TimerScreen() {
       // Add subjectId if provided
       if (subjectId) {
         newTask.subjectId = subjectId;
+      }
+
+      if (subSubjectId) {
+        newTask.subSubjectId = subSubjectId;
       }
 
       const tasksRef = collection(db, "tasks");
@@ -1908,6 +1956,7 @@ export default function TimerScreen() {
             onAbandonTask={handleAbandonCurrentTask}
             onAddOneMinute={handleAddOneMinute}
             theme={currentTheme}
+            areControlsHidden={areControlsHidden}
           />
         );
       case "Notes":
@@ -1958,6 +2007,7 @@ export default function TimerScreen() {
             onAbandonTask={handleAbandonCurrentTask}
             onAddOneMinute={handleAddOneMinute}
             theme={currentTheme}
+            areControlsHidden={areControlsHidden}
           />
         );
     }
@@ -2042,6 +2092,7 @@ export default function TimerScreen() {
             isActive={isActive}
             flipDeviceEnabled={isFlipDeviceOn}
             onTimeout={handleFlipTimeout}
+            onFlipChange={handleFlipChange}
           />
         )}
       </View>
@@ -2059,10 +2110,6 @@ export default function TimerScreen() {
           label="Notes"
           active={activeScreen === "Notes"}
           onPress={() => {
-            if (isActive && timerMode === "focus") {
-              Alert.alert("Focus Mode", "Notes are disabled until the session ends.");
-              return;
-            }
             setActiveScreen("Notes");
           }}
         />

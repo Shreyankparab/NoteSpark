@@ -64,8 +64,46 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
   const [subSubjects, setSubSubjects] = useState<SubSubject[]>([]);
   const [selectedSubSubjectId, setSelectedSubSubjectId] = useState<string | null>(null);
   const [showSubSubjectPicker, setShowSubSubjectPicker] = useState(false);
+  const [showCreateSubSubject, setShowCreateSubSubject] = useState(false);
+  const [newSubSubjectName, setNewSubSubjectName] = useState("");
+  const [isCreatingSubSubject, setIsCreatingSubSubject] = useState(false);
 
-  // Timer Configuration State
+  // ... (previous useEffects) ...
+
+  const handleCreateSubSubject = async () => {
+    if (!newSubSubjectName.trim()) {
+      Alert.alert('Error', 'Please enter a topic name');
+      return;
+    }
+
+    if (!auth.currentUser || !selectedSubjectId) {
+      Alert.alert('Error', 'No subject selected');
+      return;
+    }
+
+    setIsCreatingSubSubject(true);
+    try {
+      const subSubjectData = {
+        name: newSubSubjectName.trim(),
+        subjectId: selectedSubjectId,
+        createdAt: Date.now(),
+        userId: auth.currentUser.uid,
+      };
+
+      const docRef = await addDoc(collection(db, 'subSubjects'), subSubjectData);
+      setSelectedSubSubjectId(docRef.id);
+      setShowCreateSubSubject(false);
+      setNewSubSubjectName('');
+      Alert.alert('Success', `Topic "${subSubjectData.name}" created!`);
+    } catch (error) {
+      console.error('Error creating sub-subject:', error);
+      Alert.alert('Error', 'Failed to create topic. Please try again.');
+    } finally {
+      setIsCreatingSubSubject(false);
+    }
+  };
+
+
   const [focusMinutes, setFocusMinutes] = useState(String(initialFocusMinutes));
   const [isBreakNeeded, setIsBreakNeeded] = useState(false);
   const [breakMinutes, setBreakMinutes] = useState(5);
@@ -344,103 +382,119 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
                   </ScrollView>
                 </View>
               )}
-            {/* Sub-Subject (Topic) Selection - Only show when subject is selected */}
-            {selectedSubjectId && (
-              <View style={styles.subjectSection}>
-                <Text style={styles.sectionTitle}> Topic (Optional)</Text>
+              {/* Sub-Subject (Topic) Selection - Only show when subject is selected */}
+              {selectedSubjectId && (
+                <View style={styles.subjectSection}>
+                  <Text style={styles.sectionTitle}> Topic (Optional)</Text>
 
-                {getSelectedSubSubject() ? (
-                  <TouchableOpacity
-                    style={[styles.selectedSubjectCard, { borderColor: getSelectedSubject()?.color || '#6366F1' }]}
-                    onPress={() => setShowSubSubjectPicker(true)}
-                  >
-                    <View style={styles.subjectCardContent}>
-                      <Text style={styles.subjectIcon}></Text>
-                      <Text style={[styles.subjectName, { color: getSelectedSubject()?.color || '#6366F1' }]}>
-                        {getSelectedSubSubject()!.name}
-                      </Text>
-                    </View>
+                  {getSelectedSubSubject() ? (
                     <TouchableOpacity
-                      onPress={() => setSelectedSubSubjectId(null)}
-                      style={styles.removeSubjectButton}
+                      style={[styles.selectedSubjectCard, { borderColor: getSelectedSubject()?.color || '#6366F1' }]}
+                      onPress={() => setShowSubSubjectPicker(true)}
                     >
-                      <Ionicons name="close-circle" size={20} color="#94A3B8" />
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.selectSubjectButton}
-                    onPress={() => setShowSubSubjectPicker(true)}
-                    disabled={subSubjects.length === 0}
-                  >
-                    <Ionicons name="book-outline" size={20} color={subSubjects.length > 0 ? "#6366F1" : "#94A3B8"} />
-                    <Text style={[styles.selectSubjectText, subSubjects.length === 0 && { color: '#94A3B8' }]}>
-                      {subSubjects.length > 0 ? 'Select Topic' : 'No topics available'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Sub-Subject Picker Dropdown */}
-                {showSubSubjectPicker && (
-                  <View style={styles.subjectPicker}>
-                    <View style={styles.pickerHeader}>
-                      <Text style={styles.pickerTitle}>Choose Topic</Text>
-                      <TouchableOpacity onPress={() => setShowSubSubjectPicker(false)}>
-                        <Ionicons name="close" size={24} color="#64748b" />
-                      </TouchableOpacity>
-                    </View>
-
-                    <ScrollView style={styles.subjectList} nestedScrollEnabled>
+                      <View style={styles.subjectCardContent}>
+                        <Text style={styles.subjectIcon}></Text>
+                        <Text style={[styles.subjectName, { color: getSelectedSubject()?.color || '#6366F1' }]}>
+                          {getSelectedSubSubject()!.name}
+                        </Text>
+                      </View>
                       <TouchableOpacity
-                        style={[
-                          styles.subjectOption,
-                          !selectedSubSubjectId && styles.subjectOptionSelected
-                        ]}
-                        onPress={() => {
-                          setSelectedSubSubjectId(null);
-                          setShowSubSubjectPicker(false);
-                        }}
+                        onPress={() => setSelectedSubSubjectId(null)}
+                        style={styles.removeSubjectButton}
                       >
-                        <Text style={styles.noSubjectIcon}></Text>
-                        <Text style={styles.subjectOptionText}>No Topic</Text>
-                        {!selectedSubSubjectId && (
-                          <Ionicons name="checkmark" size={20} color="#6366F1" />
-                        )}
+                        <Ionicons name="close-circle" size={20} color="#94A3B8" />
                       </TouchableOpacity>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.selectSubjectButton}
+                      onPress={() => setShowSubSubjectPicker(true)}
+                      disabled={subSubjects.length === 0}
+                    >
+                      <Ionicons name="book-outline" size={20} color={subSubjects.length > 0 ? "#6366F1" : "#94A3B8"} />
+                      <Text style={[styles.selectSubjectText, subSubjects.length === 0 && { color: '#94A3B8' }]}>
+                        {subSubjects.length > 0 ? 'Select Topic' : 'No topics available'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
 
-                      {subSubjects.map((subSubject) => (
+                  {/* Sub-Subject Picker Dropdown */}
+                  {showSubSubjectPicker && (
+                    <View style={styles.subjectPicker}>
+                      <View style={styles.pickerHeader}>
+                        <Text style={styles.pickerTitle}>Choose Topic</Text>
+                        <TouchableOpacity onPress={() => setShowSubSubjectPicker(false)}>
+                          <Ionicons name="close" size={24} color="#64748b" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <ScrollView style={styles.subjectList} nestedScrollEnabled>
                         <TouchableOpacity
-                          key={subSubject.id}
                           style={[
                             styles.subjectOption,
-                            selectedSubSubjectId === subSubject.id && styles.subjectOptionSelected
+                            !selectedSubSubjectId && styles.subjectOptionSelected
                           ]}
                           onPress={() => {
-                            setSelectedSubSubjectId(subSubject.id);
+                            setSelectedSubSubjectId(null);
                             setShowSubSubjectPicker(false);
                           }}
                         >
-                          <Text style={styles.subjectIcon}></Text>
-                          <Text style={[styles.subjectOptionText, { color: getSelectedSubject()?.color || '#6366F1' }]}>
-                            {subSubject.name}
-                          </Text>
-                          {selectedSubSubjectId === subSubject.id && (
-                            <Ionicons name="checkmark" size={20} color={getSelectedSubject()?.color || '#6366F1'} />
+                          <Text style={styles.noSubjectIcon}></Text>
+                          <Text style={styles.subjectOptionText}>No Topic</Text>
+                          {!selectedSubSubjectId && (
+                            <Ionicons name="checkmark" size={20} color="#6366F1" />
                           )}
                         </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
 
-                {/* Helper text for creating topics */}
-                {subSubjects.length === 0 && (
-                  <Text style={styles.helperText}>
-                     Create topics in the Subjects screen to organize your notes better
-                  </Text>
-                )}
-              </View>
-            )}
+                        {subSubjects.map((subSubject) => (
+                          <TouchableOpacity
+                            key={subSubject.id}
+                            style={[
+                              styles.subjectOption,
+                              selectedSubSubjectId === subSubject.id && styles.subjectOptionSelected
+                            ]}
+                            onPress={() => {
+                              setSelectedSubSubjectId(subSubject.id);
+                              setShowSubSubjectPicker(false);
+                            }}
+                          >
+                            <Text style={styles.subjectIcon}></Text>
+                            <Text style={[styles.subjectOptionText, { color: getSelectedSubject()?.color || '#6366F1' }]}>
+                              {subSubject.name}
+                            </Text>
+                            {selectedSubSubjectId === subSubject.id && (
+                              <Ionicons name="checkmark" size={20} color={getSelectedSubject()?.color || '#6366F1'} />
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* Helper text for creating topics */}
+                  {subSubjects.length === 0 && (
+                    <TouchableOpacity
+                      style={{ marginTop: 8 }}
+                      onPress={() => setShowCreateSubSubject(true)}
+                    >
+                      <Text style={[styles.helperText, { color: '#6366F1', textDecorationLine: 'underline' }]}>
+                        + Create new topic for {getSelectedSubject()?.name}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Add Create Button in Dropdown or near it */}
+                  {subSubjects.length > 0 && (
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingLeft: 4 }}
+                      onPress={() => setShowCreateSubSubject(true)}
+                    >
+                      <Ionicons name="add-circle-outline" size={18} color="#6366F1" />
+                      <Text style={{ marginLeft: 6, color: '#6366F1', fontWeight: '600' }}>Create new topic</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
 
             </View>
 
@@ -675,6 +729,58 @@ const TaskInputModal: React.FC<TaskInputModalProps> = ({
           </View>
         </View>
       </View>
+
+      {/* Quick Create Sub-Subject Modal */}
+      <Modal
+        visible={showCreateSubSubject}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCreateSubSubject(false)}
+      >
+        <View style={styles.quickCreateOverlay}>
+          <View style={[styles.quickCreateContainer, { height: 'auto', paddingBottom: 24 }]}>
+            <View style={styles.quickCreateHeader}>
+              <Text style={styles.quickCreateTitle}>New Topic</Text>
+              <TouchableOpacity onPress={() => setShowCreateSubSubject(false)}>
+                <Ionicons name="close" size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ marginBottom: 16, color: '#64748B' }}>
+              Adding topic to: <Text style={{ fontWeight: '700', color: getSelectedSubject()?.color }}>{getSelectedSubject()?.name}</Text>
+            </Text>
+
+            <TextInput
+              style={styles.quickCreateInput}
+              placeholder="Topic name (e.g., Algebra)"
+              placeholderTextColor="#94A3B8"
+              value={newSubSubjectName}
+              onChangeText={setNewSubSubjectName}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.quickCreateButton,
+                isCreatingSubSubject && styles.quickCreateButtonDisabled,
+                { marginTop: 16 }
+              ]}
+              onPress={handleCreateSubSubject}
+              disabled={isCreatingSubSubject}
+            >
+              <LinearGradient
+                colors={['#6366F1', '#4F46E5']}
+                style={styles.quickCreateGradient}
+              >
+                <Ionicons name="add-circle" size={20} color="#FFF" />
+                <Text style={styles.quickCreateButtonText}>
+                  {isCreatingSubSubject ? 'Creating...' : 'Create Topic'}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Quick Create Subject Modal */}
       <Modal
@@ -1260,7 +1366,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#1E293B",
-    width: 80,    textAlign: "center",
+    width: 80, textAlign: "center",
   },
   helperText: {
     fontSize: 13,

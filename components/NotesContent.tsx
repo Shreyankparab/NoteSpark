@@ -1430,7 +1430,7 @@ const NotesContent: React.FC<NotesContentProps> = ({
 
 
 
-// ... (render) ...
+
 
       {/* Zoomable Image Viewer - Higher z-index for web */}
       {
