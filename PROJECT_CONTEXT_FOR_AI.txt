@@ -1,0 +1,93 @@
+================================================================================
+PROJECT CONTEXT PROMPT
+Copy and paste this entire text to give any AI Agent full context of this project.
+================================================================================
+
+PROJECT NAME: Studix (formerly NoteSpark)
+TYPE: Mobile Productivity Application (Pomodoro Timer + Task Manager + Gamified Notes) - "A Pomodoro-Based Study Companion"
+TECH STACK: 
+- Framework: React Native with Expo (Managed Workflow, Expo Go compatible).
+- Language: TypeScript.
+- Backend/DB: Firebase (Authentication & Firestore).
+- Navigation: Custom State-based Navigation (User is mostly on TimerScreen, changing specific visible modals).
+
+--------------------------------------------------------------------------------
+CORE FEATURES
+--------------------------------------------------------------------------------
+1. POMODORO TIMER (with Optional Flip Mode):
+   - Standard countdown timer logic.
+   - Optional "Flip Mode": Users can enable this setting. When enabled, placing the phone face down hides controls or auto-starts the timer.
+   - Purpose: Reduces distractions, but the app works perfectly as a standard timer without it.
+
+2. TASK MANAGEMENT:
+   - Custom Tasks: Users can create tasks with specific durations.
+   - Subject & Topic System: Tasks are categorized by Subject (e.g., "Math") and Sub-Subject/Topic (e.g., "Algebra").
+   - Inline Creation: Users can create new Subjects and Topics directly from the task creation dropdowns.
+   - Persistence: Tasks retain their Subject/Topic association through the entire flow (Creation -> Timer -> Completion -> Notes).
+
+3. GAMIFIED NOTES SYSTEM:
+   - Post-Session Flow: After a timer ends, users can:
+     - Capture an image of their work.
+     - Write notes about what they studied.
+     - Tag the session with Subject/Topic.
+   - Rewards: Completing sessions awards "XP" (implied via stats), maintains "Streaks", and unlocks "Achievements" (e.g., "First 10 Hours").
+
+4. CUSTOMIZATION:
+   - Themes: Users can select different color themes.
+   - White Noise: Built-in background sounds (Rain, Cafe, White Noise).
+   - Flip Device UI: Specialized high-contrast UI when the device is flipped.
+
+--------------------------------------------------------------------------------
+KEY FILE STRUCTURE & ARCHITECTURE
+--------------------------------------------------------------------------------
+ROOT: d:\NoteSpark
+
+KEY SCREENS:
+1. `screens/TimerScreen.tsx` ("The God Component"):
+   - This is the main hub of the application.
+   - 2,700+ lines of code.
+   - Handles: Timer logic, Firebase listeners (Tasks, Subjects), Auth state, and renders ALL modals.
+   - Refactoring Target: Needs to be split into custom hooks (`useTimer`, `useData`).
+
+KEY MODALS (in `components/modals/`):
+1. `TaskInputModal.tsx`:
+   - The "Timer Config". Allows setting duration, creating subjects, and adding break settings.
+2. `AddCustomTaskModal.tsx`:
+   - Allows creating a specific named task with Subject/Topic.
+3. `NotesModal.tsx`:
+   - The "Post-Mortem". Opens after a session.
+   - Displays session stats.
+   - Allows saving notes, images, and creating/selecting topics.
+   - Critical Logic: Must sync `subjectId` and `subSubjectId` from the completed session props.
+
+SHARED TYPES (`types/index.ts`):
+- `Task`: { id, title, duration, status, subjectId, subSubjectId, ... }
+- `Subject`: { id, name, color, icon ... }
+- `SubSubject`: { id, name, subjectId ... }
+
+--------------------------------------------------------------------------------
+DATA FLOW (CRITICAL)
+--------------------------------------------------------------------------------
+1. CREATION: User creates a Task with `subjectId` and `subSubjectId`.
+2. LISTENER: `TimerScreen` listens to Firestore `tasks` collection. *Update: Listener now correctly maps subject/subSubject IDs.*
+3. EXECUTION: User plays the task -> `currentTask` state is set.
+4. COMPLETION: `handleEndSession` in `TimerScreen` captures the session data.
+5. LOGGING: Data is passed to `setCompletedSession`.
+6. NOTES: `NotesModal` opens, receiving `subjectId` and `subSubjectId` from `completedSession`. It auto-fills the dropdowns.
+
+--------------------------------------------------------------------------------
+CURRENT STATUS (Jan 2026)
+--------------------------------------------------------------------------------
+- Stable: The app runs without errors in Expo Go.
+- Optimized: AdMob and Native-only modules were removed to ensure stability.
+- Feature Complete: Inline Topic creation is implemented across all modals.
+- Clean: Debug logs have been mostly removed.
+
+--------------------------------------------------------------------------------
+KNOWN ISSUES / FUTURE WORK
+--------------------------------------------------------------------------------
+1. `TimerScreen.tsx` is too large and needs splitting.
+2. List rendering uses `ScrollView` (needs `FlatList` for scalability).
+3. Firestore reads are not paginated (loads all history on launch).
+
+Use this context to answer any specific questions or generating code updates.

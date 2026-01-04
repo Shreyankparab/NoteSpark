@@ -1,0 +1,138 @@
+--------------------------------------------------------------------------------
+PROMPT 1: REFACTORING TIMERSCREEN.TSX
+--------------------------------------------------------------------------------
+Context:
+The file `screens/TimerScreen.tsx` has become a "God Component" (over 2,700 lines). It currently handles:
+1. Timer countdown logic.
+2. Firebase Authentication state.
+3. Fetching and storing Tasks, Subjects, and Notes from Firestore.
+4. UI logic for multiple modals (Settings, Profile, Custom Tasks, etc.).
+5. Notification scheduling.
+
+Goal:
+Break this file down into smaller, manageable chunks using Custom React Hooks.
+
+Instructions for AI Agent:
+1. Create a new folder: `src/hooks` (or `hooks` if src doesn't exist).
+2. Create `useTimer.ts`:
+   - Move all state related to the countdown (`seconds`, `isActive`, `initialTime`, `timerMode`).
+   - Move `checkAndRestoreTimer` logic here.
+   - Export functions: `start()`, `pause()`, `stop()`, `reset()`.
+3. Create `useUserData.ts`:
+   - Move the Firestore `onSnapshot` listeners for `tasks`, `subjects`, and `notes`.
+   - Return these data arrays so they can be consumed by the screen.
+4. Refactor `TimerScreen.tsx`:
+   - Import these new hooks.
+   - Remove the old large blocks of code.
+   - Ensure the app still compiles and runs exactly as before.
+
+--------------------------------------------------------------------------------
+PROMPT 2: MEMORY OPTIMIZATION (FLATLIST)
+--------------------------------------------------------------------------------
+Context:
+In `components/modals/AddCustomTaskModal.tsx` and `components/modals/NotesModal.tsx`, we are currently rendering lists of Subjects and Sub-Subjects using a standard `ScrollView` with a `.map()` function.
+Example:
+<ScrollView>
+  {subjects.map(subject => <View ... />)}
+</ScrollView>
+
+Problem:
+This renders ALL items at once. If a user has 100+ subjects, it will consume unnecessary memory and slow down opening the modal.
+
+Goal:
+Replace these maps with `FlatList` to enable "Virtualization" (only rendering what is on screen).
+
+Instructions for AI Agent:
+1. Identify the ScrollViews in `AddCustomTaskModal` and `NotesModal` that contain dynamic lists.
+2. Replace them with the `<FlatList />` component from React Native.
+3. Props to use:
+   - `data`: pass the array (e.g., `subjects`).
+   - `renderItem`: move the JSX from inside the .map() here.
+   - `keyExtractor`: use `item.id`.
+   - `initialNumToRender={10}`.
+   - Move any style props from the ScrollView to `contentContainerStyle`.
+4. Verify that scrolling still works smoothly inside the modal.
+
+--------------------------------------------------------------------------------
+PROMPT 3: FIRESTORE PAGINATION
+--------------------------------------------------------------------------------
+Context:
+Currently, the app listens to the entire `tasks` collection for a user in real-time.
+Code reference: `collection(db, "tasks"), where("userId", "==", user.uid)`
+
+Problem:
+As the user adds thousands of tasks over time, downloading the entire history on app startup will become slow and expensive (bandwidth/read costs).
+
+Goal:
+Implement pagination to only load the most recent items initially.
+
+Instructions for AI Agent:
+1. Modify the `tasks` query in `TimerScreen.tsx` (or `useUserData.ts` if refactored).
+2. Change the query to:
+   - Order by `createdAt` descending.
+   - Limit to the first 20 items.
+3. Create a function `loadMoreTasks()`:
+   - It should take the last visible document from the previous fetch.
+   - Use `startAfter(lastDoc)` to fetch the next 20 items.
+   - Append these new items to the local state array.
+4. (Optional) If you are using FlatList for the tasks view, attach `loadMoreTasks` to the `onEndReached` prop.
+
+--------------------------------------------------------------------------------
+PROMPT 4: GENERAL CLEANUP
+--------------------------------------------------------------------------------
+Context:
+The codebase has accumulated unused imports and console logs during rapid development.
+
+Instructions for AI Agent:
+1. Scan `screens/TimerScreen.tsx` and all files in `components/modals/`.
+2. Remove any `console.log` statements used for debugging (keep error logs).
+3. Remove unused variables and imports (e.g. `isLogin`, `isLoading` if not used).
+4. Run the linter if available to catch simple styling issues.
+
+--------------------------------------------------------------------------------
+PROMPT 5: BRAND NAMING
+--------------------------------------------------------------------------------
+Context:
+We need a new name for the productivity app because "NoteSpark" is already taken.
+Core Features:
+1. Pomodoro Timer: Core functionality with standard controls.
+2. Optional Flip-to-Focus: Unique feature where flipping phone face down fits deep work (user enabled).
+3. Gamification: Streaks, visual fire effects, XP leveling.
+4. Integration: Focus sessions link to Notes and Tasks.
+5. Vibe: Premium, High energy, or Minimalist.
+Forbidden Words: NoteSpark.
+
+Instructions for AI Agent:
+1. Act as a professional Brand Consultant.
+2. Generate 10 unique, available app names.
+3. For each name, provide:
+   - The Name.
+   - A 1-sentence explanation of why it fits.
+   - A "Vibe Check" (e.g., "Minimalist", "Aggressive", "Playful").
+4. Please check (theoretical) overlap with major existing apps like Forest or Calm.
+5. Provide a subtitle for the Play Store listing (e.g., "AppName: Focus & Notes").
+
+--------------------------------------------------------------------------------
+PROMPT 6: ONBOARDING & UX IMPROVEMENTS (NO-MANUAL CONCEPT)
+--------------------------------------------------------------------------------
+Context:
+The goal is to make the app "Studix" intuitive enough that no user manual is required.
+Currently, users might be confused about the "Flip to Focus" mechanic or how "Topics" work.
+
+Goal:
+Implement a 3-step Onboarding Flow and Contextual Tooltips.
+
+Instructions for AI Agent:
+1. Create a new component `components/OnboardingCarousel.tsx`.
+   - Slide 1: "Focus Your Way" (Show Timer with the optional Flip Toggle highlighted).
+   - Slide 2: "Track your Progress" (Graphic showing stats/streaks).
+   - Slide 3: "Master your Subjects" (Graphic showing Notes/Topics).
+   - Show this ONLY on the very first app launch (persist `hasSeenOnboarding` in AsyncStorage).
+2. Implement "Empty States" in `AddCustomTaskModal` and `TimerScreen`:
+   - If `tasks.length === 0`: Show a friendly illustration/text: "No tasks yet! Tap + to start your first session."
+   - If `subjects.length === 0`: Show text in the dropdown: "Create a topic to organize your work!"
+3. Implement "Coach Marks" (Tooltip Overlay):
+   - When the user lands on the Timer Screen for the first time, show a pulsing ring around the main Timer with a tooltip: "Flip your phone face down to start."
+   - This should disappear immediately once they try it once.
+
+Goal: Minimize text, maximize visual cues.
