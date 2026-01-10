@@ -215,7 +215,11 @@ const AddCustomTaskModal: React.FC<AddCustomTaskModalProps> = ({
 
               {/* Subject Picker Dropdown */}
               {showSubjectPicker && (
-                <ScrollView style={styles.subjectDropdown} nestedScrollEnabled>
+                <ScrollView
+                  style={styles.subjectDropdown}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={true}
+                >
                   <TouchableOpacity
                     style={styles.subjectOption}
                     onPress={() => {
@@ -276,38 +280,38 @@ const AddCustomTaskModal: React.FC<AddCustomTaskModalProps> = ({
 
                 {/* Sub-Subject Picker Dropdown */}
                 {showSubSubjectPicker && (
-                  <View>
-                    <ScrollView style={styles.subjectDropdown} nestedScrollEnabled>
+                  <ScrollView
+                    style={styles.subjectDropdown}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={true}
+                  >
+                    <TouchableOpacity
+                      style={styles.subjectOption}
+                      onPress={() => {
+                        setSelectedSubSubjectId(null);
+                        setShowSubSubjectPicker(false);
+                      }}
+                    >
+                      <Text style={styles.subjectOptionText}>No Topic</Text>
+                    </TouchableOpacity>
+                    {subSubjects.map((sub) => (
                       <TouchableOpacity
-                        style={styles.subjectOption}
+                        key={sub.id}
+                        style={[
+                          styles.subjectOption,
+                          selectedSubSubjectId === sub.id && styles.subjectOptionSelected,
+                        ]}
                         onPress={() => {
-                          setSelectedSubSubjectId(null);
+                          setSelectedSubSubjectId(sub.id);
                           setShowSubSubjectPicker(false);
                         }}
                       >
-                        <Text style={styles.subjectOptionText}>No Topic</Text>
+                        <Text style={[styles.subjectOptionText, { color: selectedSubject?.color }]}>{sub.name}</Text>
+                        {selectedSubSubjectId === sub.id && (
+                          <Ionicons name="checkmark" size={16} color={selectedSubject?.color} />
+                        )}
                       </TouchableOpacity>
-                      {subSubjects.map((sub) => (
-                        <TouchableOpacity
-                          key={sub.id}
-                          style={[
-                            styles.subjectOption,
-                            selectedSubSubjectId === sub.id && styles.subjectOptionSelected,
-                          ]}
-                          onPress={() => {
-                            setSelectedSubSubjectId(sub.id);
-                            setShowSubSubjectPicker(false);
-                          }}
-                        >
-                          <Text style={[styles.subjectOptionText, { color: selectedSubject?.color }]}>{sub.name}</Text>
-                          {selectedSubSubjectId === sub.id && (
-                            <Ionicons name="checkmark" size={16} color={selectedSubject?.color} />
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-
-                    {/* Create New Topic Button */}
+                    ))}
                     <TouchableOpacity
                       style={{
                         flexDirection: 'row',
@@ -330,7 +334,7 @@ const AddCustomTaskModal: React.FC<AddCustomTaskModalProps> = ({
                         Create new topic
                       </Text>
                     </TouchableOpacity>
-                  </View>
+                  </ScrollView>
                 )}
               </View>
             )}

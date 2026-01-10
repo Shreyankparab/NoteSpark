@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  FlatList,
 } from 'react-native';
 import { collection, addDoc, updateDoc, doc, getDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../firebase/firebaseConfig';
@@ -615,18 +616,24 @@ const NotesModal: React.FC<NotesModalProps> = ({
               <Text style={styles.headerTitle}>Select Subject</Text>
               <TouchableOpacity onPress={() => setShowSubjectPicker(false)}><Ionicons name="close" size={24} color="#64748b" /></TouchableOpacity>
             </View>
-            <ScrollView>
-              <TouchableOpacity style={styles.subjectOption} onPress={() => { setSelectedSubjectId(null); setShowSubjectPicker(false); }}>
-                <Text style={styles.subjectOptionText}>No Subject</Text>
-              </TouchableOpacity>
-              {subjects.map(s => (
-                <TouchableOpacity key={s.id} style={styles.subjectOption} onPress={() => { setSelectedSubjectId(s.id); setShowSubjectPicker(false); }}>
+            <FlatList
+              style={{ flex: 1 }}
+              data={subjects}
+              keyExtractor={(item) => item.id}
+              initialNumToRender={10}
+              ListHeaderComponent={
+                <TouchableOpacity style={styles.subjectOption} onPress={() => { setSelectedSubjectId(null); setShowSubjectPicker(false); }}>
+                  <Text style={styles.subjectOptionText}>No Subject</Text>
+                </TouchableOpacity>
+              }
+              renderItem={({ item: s }) => (
+                <TouchableOpacity style={styles.subjectOption} onPress={() => { setSelectedSubjectId(s.id); setShowSubjectPicker(false); }}>
                   <Text style={{ fontSize: 20 }}>{s.icon}</Text>
                   <Text style={[styles.subjectOptionText, { color: s.color }]}>{s.name}</Text>
                   {selectedSubjectId === s.id && <Ionicons name="checkmark" size={20} color={s.color} />}
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              )}
+            />
             <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateSubject(true)}>
               <Ionicons name="add-circle" size={20} color="#FFF" />
               <Text style={{ color: '#FFF', fontWeight: '600' }}>Create New Subject</Text>
@@ -643,17 +650,23 @@ const NotesModal: React.FC<NotesModalProps> = ({
               <Text style={styles.headerTitle}>Select Topic</Text>
               <TouchableOpacity onPress={() => setShowSubSubjectPicker(false)}><Ionicons name="close" size={24} color="#64748b" /></TouchableOpacity>
             </View>
-            <ScrollView>
-              <TouchableOpacity style={styles.subjectOption} onPress={() => { setSelectedSubSubjectId(null); setShowSubSubjectPicker(false); }}>
-                <Text style={styles.subjectOptionText}>No Topic</Text>
-              </TouchableOpacity>
-              {subSubjects.map(s => (
-                <TouchableOpacity key={s.id} style={styles.subjectOption} onPress={() => { setSelectedSubSubjectId(s.id); setShowSubSubjectPicker(false); }}>
+            <FlatList
+              style={{ flex: 1 }}
+              data={subSubjects}
+              keyExtractor={(item) => item.id}
+              initialNumToRender={10}
+              ListHeaderComponent={
+                <TouchableOpacity style={styles.subjectOption} onPress={() => { setSelectedSubSubjectId(null); setShowSubSubjectPicker(false); }}>
+                  <Text style={styles.subjectOptionText}>No Topic</Text>
+                </TouchableOpacity>
+              }
+              renderItem={({ item: s }) => (
+                <TouchableOpacity style={styles.subjectOption} onPress={() => { setSelectedSubSubjectId(s.id); setShowSubSubjectPicker(false); }}>
                   <Text style={[styles.subjectOptionText, { color: getSelectedSubject()?.color }]}>{s.name}</Text>
                   {selectedSubSubjectId === s.id && <Ionicons name="checkmark" size={20} color={getSelectedSubject()?.color} />}
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              )}
+            />
             <TouchableOpacity style={styles.createButton} onPress={() => setShowCreateSubSubject(true)}>
               <Ionicons name="add-circle" size={20} color="#FFF" />
               <Text style={{ color: '#FFF', fontWeight: '600' }}>Create New Topic</Text>

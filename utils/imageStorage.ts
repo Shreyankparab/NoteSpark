@@ -42,6 +42,7 @@ export const uploadToCloudinaryBase64 = async (
 /**
  * Uploads base64 image to Firebase Storage and returns the download URL
  * Uses the React Native compatible approach: base64 → file → fetch → blob → upload
+ * Falls back to Cloudinary if Firebase Storage fails on mobile
  * @param base64 Base64 encoded image data (without data URI prefix)
  * @param mimeType MIME type of the image (e.g., 'image/jpeg')
  * @param options Upload options including folder path
@@ -52,28 +53,27 @@ export const uploadToFirebaseStorage = async (
   mimeType: string,
   options?: { folder?: string }
 ): Promise<string> => {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('User must be logged in to upload images');
+  }
+
+  // Generate unique filename
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(2, 10);
+  const extension = mimeType.split('/')[1] || 'jpg';
+  const filename = `${timestamp}_${randomId}.${extension}`;
+
+  // Determine storage path
+  const folder = options?.folder || `images/${user.uid}/notes`;
+  const storagePath = `${folder}/${filename}`;
+
+  // Try Firebase Storage first, then fallback to Cloudinary
   try {
-    const user = auth.currentUser;
-    if (!user) {
-      throw new Error('User must be logged in to upload images');
-    }
-
-    // Generate unique filename
-    const timestamp = Date.now();
-    const randomId = Math.random().toString(36).substring(2, 10);
-    const extension = mimeType.split('/')[1] || 'jpg';
-    const filename = `${timestamp}_${randomId}.${extension}`;
-
-    // Determine storage path
-    // Determine storage path
-    const folder = options?.folder || `images/${user.uid}/notes`;
-    const storagePath = `${folder}/${filename}`;
-
     let blob: Blob;
 
     if (Platform.OS === 'web') {
       // WEB SPECIFIC: Direct conversion from base64/dataURL to Blob
-      // If pure base64, prepend header
       const base64Str = base64.startsWith('data:')
         ? base64
         : `data:${mimeType};base64,${base64}`;
@@ -84,6 +84,9 @@ export const uploadToFirebaseStorage = async (
       // MOBILE SPECIFIC: Use FileSystem to handle large files efficiently
       // Step 1: Write base64 to temporary file
       const tempFileUri = `${FileSystem.cacheDirectory}${filename}`;
+
+      console.log('📱 Mobile upload - writing to temp file:', tempFileUri);
+
       await FileSystem.writeAsStringAsync(tempFileUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -92,6 +95,8 @@ export const uploadToFirebaseStorage = async (
       const response = await fetch(tempFileUri);
       blob = await response.blob();
 
+      console.log('📱 Mobile upload - blob created, size:', blob.size);
+
       // Clean up async (fire and forget for mobile)
       FileSystem.deleteAsync(tempFileUri, { idempotent: true }).catch(err =>
         console.warn('Failed to delete temp file:', err)
@@ -99,6 +104,7 @@ export const uploadToFirebaseStorage = async (
     }
 
     // Step 3: Upload blob to Firebase Storage
+    console.log('⬆️ Uploading to Firebase Storage:', storagePath);
     const imageRef = ref(storage, storagePath);
     await uploadBytes(imageRef, blob);
 
@@ -118,20 +124,33 @@ export const uploadToFirebaseStorage = async (
     }
 
     return downloadURL;
-  } catch (error: any) {
-    console.error('❌ Failed to upload to Firebase Storage:', error);
-    console.error('Error code:', error?.code);
-    console.error('Error message:', error?.message);
-    console.error('Error details:', JSON.stringify(error, null, 2));
+  } catch (firebaseError: any) {
+    console.error('❌ Firebase Storage upload failed:', firebaseError);
+    console.error('Error code:', firebaseError?.code);
+    console.error('Error message:', firebaseError?.message);
+    console.log('📱 Current platform:', Platform.OS);
 
-    // Check if it's a server response error
-    if (error?.serverResponse) {
-      console.error('Server response:', error.serverResponse);
+    // Fallback to Cloudinary when Firebase fails (works on all platforms)
+    console.log('🔄 Falling back to Cloudinary upload...');
+    try {
+      const cloudinaryUrl = await uploadToCloudinaryBase64(base64, mimeType, {
+        folder: `${CLOUDINARY_FOLDER}/${user.uid}`,
+      });
+      console.log('✅ Image uploaded to Cloudinary (fallback):', cloudinaryUrl);
+      return cloudinaryUrl;
+    } catch (cloudinaryError: any) {
+      console.error('❌ Cloudinary fallback also failed:', cloudinaryError);
+      // Show user-friendly error with both error messages
+      Alert.alert(
+        'Image Upload Failed',
+        `Unable to upload image. Please check your internet connection and try again.\n\nDetails: ${firebaseError?.message || 'Unknown error'}`,
+        [{ text: 'OK' }]
+      );
+      throw new Error(`Both Firebase and Cloudinary uploads failed. Firebase: ${firebaseError?.message}, Cloudinary: ${cloudinaryError?.message}`);
     }
-
-    throw error;
   }
 };
+
 
 /**
  * Saves an image to Firebase Storage

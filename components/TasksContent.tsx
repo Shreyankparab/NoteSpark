@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import React, { useCallback } from "react";
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Task } from "../types";
 import { Theme } from "../constants/themes";
@@ -14,6 +14,10 @@ interface TasksContentProps {
   onAddCustomTask: () => void;
   currentTaskId: string | null;
   theme?: Theme;
+  // Pagination props
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
 }
 
 const TasksContent: React.FC<TasksContentProps> = ({
@@ -26,11 +30,14 @@ const TasksContent: React.FC<TasksContentProps> = ({
   onAddCustomTask,
   currentTaskId,
   theme,
+  onLoadMore,
+  hasMore = true,
+  loadingMore = false,
 }) => {
+  // Tasks are already sorted by createdAt desc from the query
   const sortedTasks = [...tasks].sort((a, b) => b.createdAt - a.createdAt);
-  
+
   console.log("🎯 TasksContent received tasks:", tasks.length);
-  console.log("🎯 Sorted tasks:", sortedTasks);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -74,122 +81,155 @@ const TasksContent: React.FC<TasksContentProps> = ({
     }
   };
 
+  const handleLoadMore = useCallback(() => {
+    if (onLoadMore && hasMore && !loadingMore) {
+      console.log("🔄 Triggering load more...");
+      onLoadMore();
+    }
+  }, [onLoadMore, hasMore, loadingMore]);
+
+  const renderTask = useCallback(({ item: task }: { item: Task }) => (
+    <View
+      style={[
+        styles.taskCard,
+        task.id === currentTaskId && styles.taskCardActive,
+      ]}
+    >
+      <View style={styles.taskCardHeader}>
+        <View style={styles.taskCardTitleRow}>
+          <Ionicons
+            name={getStatusIcon(task.status) as any}
+            size={22}
+            color={getStatusColor(task.status)}
+          />
+          <View style={styles.taskInfo}>
+            <Text style={styles.taskCardTitle}>{task.title}</Text>
+            <View style={styles.taskMeta}>
+              <Text style={styles.taskCardDuration}>
+                <Ionicons name="time-outline" size={12} color="#64748b" />
+                {" "}{task.duration} min
+              </Text>
+              <View style={[
+                styles.statusBadge,
+                { backgroundColor: getStatusColor(task.status) + "20" }
+              ]}>
+                <Text style={[
+                  styles.statusBadgeText,
+                  { color: getStatusColor(task.status) }
+                ]}>
+                  {getStatusText(task.status)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          {/* Pending Tasks: Play & Abandon Buttons */}
+          {task.status === "pending" && (
+            <>
+              <TouchableOpacity
+                style={styles.abandonButton}
+                onPress={() => onAbandonTask(task.id)}
+              >
+                <Ionicons name="close" size={18} color="#ef4444" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.playButton}
+                onPress={() => onPlayTask(task)}
+              >
+                <Ionicons name="play" size={20} color="#fff" />
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Completed Tasks: Play Again only (edit option in dialog) */}
+          {task.status === "completed" && (
+            <TouchableOpacity
+              style={styles.playAgainButton}
+              onPress={() => onPlayAgain(task)}
+            >
+              <Ionicons name="refresh" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
+
+          {/* Active Tasks: No actions */}
+          {task.status === "active" && (
+            <View style={styles.activeIndicator}>
+              <Text style={styles.activeText}>Running</Text>
+            </View>
+          )}
+
+          {/* Abandoned Tasks: Delete only */}
+          {task.status === "abandoned" && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => onDeleteTask(task.id)}
+            >
+              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <Text style={styles.taskCardDate}>
+        {new Date(task.createdAt).toLocaleDateString()} at{" "}
+        {new Date(task.createdAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </Text>
+    </View>
+  ), [currentTaskId, onAbandonTask, onPlayTask, onPlayAgain, onDeleteTask]);
+
+  const renderFooter = useCallback(() => {
+    if (!loadingMore) return null;
+
+    return (
+      <View style={styles.loadingFooter}>
+        <ActivityIndicator size="small" color="#9333ea" />
+        <Text style={styles.loadingText}>Loading more tasks...</Text>
+      </View>
+    );
+  }, [loadingMore]);
+
+  const renderEmpty = useCallback(() => (
+    <View style={styles.emptyTasksContainer}>
+      <Ionicons
+        name="checkbox-outline"
+        size={64}
+        color="rgba(255,255,255,0.4)"
+      />
+      <Text style={styles.placeholderText}>No tasks yet</Text>
+      <Text style={styles.placeholderSubText}>
+        Tap the + button to add your first task
+      </Text>
+    </View>
+  ), []);
+
+  const keyExtractor = useCallback((item: Task) => item.id, []);
+
   return (
     <View style={styles.tasksContainer}>
       <Text style={styles.tasksTitle}>Your Tasks</Text>
-      
-      {sortedTasks.length === 0 ? (
-        <View style={styles.emptyTasksContainer}>
-          <Ionicons
-            name="checkbox-outline"
-            size={64}
-            color="rgba(255,255,255,0.4)"
-          />
-          <Text style={styles.placeholderText}>No tasks yet</Text>
-          <Text style={styles.placeholderSubText}>
-            Tap the + button to add your first task
-          </Text>
-        </View>
-      ) : (
-        <ScrollView style={styles.tasksList} showsVerticalScrollIndicator={false}>
-          {sortedTasks.map((task) => (
-            <View
-              key={task.id}
-              style={[
-                styles.taskCard,
-                task.id === currentTaskId && styles.taskCardActive,
-              ]}
-            >
-              <View style={styles.taskCardHeader}>
-                <View style={styles.taskCardTitleRow}>
-                  <Ionicons
-                    name={getStatusIcon(task.status)}
-                    size={22}
-                    color={getStatusColor(task.status)}
-                  />
-                  <View style={styles.taskInfo}>
-                    <Text style={styles.taskCardTitle}>{task.title}</Text>
-                    <View style={styles.taskMeta}>
-                      <Text style={styles.taskCardDuration}>
-                        <Ionicons name="time-outline" size={12} color="#64748b" />
-                        {" "}{task.duration} min
-                      </Text>
-                      <View style={[
-                        styles.statusBadge,
-                        { backgroundColor: getStatusColor(task.status) + "20" }
-                      ]}>
-                        <Text style={[
-                          styles.statusBadgeText,
-                          { color: getStatusColor(task.status) }
-                        ]}>
-                          {getStatusText(task.status)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                  {/* Pending Tasks: Play & Abandon Buttons */}
-                  {task.status === "pending" && (
-                    <>
-                      <TouchableOpacity
-                        style={styles.abandonButton}
-                        onPress={() => onAbandonTask(task.id)}
-                      >
-                        <Ionicons name="close" size={18} color="#ef4444" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.playButton}
-                        onPress={() => onPlayTask(task)}
-                      >
-                        <Ionicons name="play" size={20} color="#fff" />
-                      </TouchableOpacity>
-                    </>
-                  )}
-                  
-                  {/* Completed Tasks: Play Again only (edit option in dialog) */}
-                  {task.status === "completed" && (
-                    <TouchableOpacity
-                      style={styles.playAgainButton}
-                      onPress={() => onPlayAgain(task)}
-                    >
-                      <Ionicons name="refresh" size={18} color="#fff" />
-                    </TouchableOpacity>
-                  )}
-                  
-                  {/* Active Tasks: No actions */}
-                  {task.status === "active" && (
-                    <View style={styles.activeIndicator}>
-                      <Text style={styles.activeText}>Running</Text>
-                    </View>
-                  )}
-                  
-                  {/* Abandoned Tasks: Delete only */}
-                  {task.status === "abandoned" && (
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => onDeleteTask(task.id)}
-                    >
-                      <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-              
-              <Text style={styles.taskCardDate}>
-                {new Date(task.createdAt).toLocaleDateString()} at{" "}
-                {new Date(task.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      )}
-      
+
+      <FlatList
+        data={sortedTasks}
+        renderItem={renderTask}
+        keyExtractor={keyExtractor}
+        style={styles.tasksList}
+        contentContainerStyle={sortedTasks.length === 0 ? styles.emptyContainer : undefined}
+        showsVerticalScrollIndicator={false}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+      />
+
       {/* Floating Action Button */}
       <TouchableOpacity
         style={[
@@ -218,14 +258,9 @@ const styles = StyleSheet.create({
     color: "white",
     marginBottom: 20,
   },
-  debugContainer: { 
-    backgroundColor: 'rgba(255,255,255,0.1)', 
-    padding: 10, 
-    marginBottom: 10, 
-    borderRadius: 8 
+  emptyContainer: {
+    flex: 1,
   },
-  debugText: { color: 'white', fontSize: 12 },
-  debugSubText: { color: 'white', fontSize: 10 },
   emptyTasksContainer: {
     flex: 1,
     justifyContent: "center",
@@ -362,6 +397,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#94a3b8",
     marginTop: 8,
+  },
+  loadingFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.7)",
   },
   fab: {
     position: "absolute",

@@ -57,6 +57,19 @@ export interface PomodoroNote {
   breakDuration?: number; // accumulated break duration in minutes
 }
 
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  createdAt?: number;
+  updatedAt?: number;
+  pinned?: boolean;
+  userId: string;
+  taskId?: string | null;
+  duration?: number;
+  imageUrl?: string;
+}
+
 // --- ACHIEVEMENT TYPES ---
 export enum AchievementType {
   STREAK = "streak",
